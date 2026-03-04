@@ -1,47 +1,62 @@
 <!doctype html>
-<html>
+<html lang="ru">
   <head>
-    <meta charset="utf-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>PetPass</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-      body{font-family:system-ui; padding:16px; background:#f5f7fb; margin:0;}
-      .card{border:1px solid #ddd; border-radius:16px; padding:16px; background:white; max-width:540px; margin:16px auto;}
-      button{padding:12px 14px; border-radius:12px; border:0; cursor:pointer;}
-      .pet-card{border:1px solid #ececec; border-radius:12px; padding:12px; margin-top:10px;}
-      .pet-type{font-size:13px; color:#555;}
-      .primary{background:#2b7cff; color:#fff;}
-      .muted{color:#666;}
-      .hidden{display:none;}
-      .row{display:flex; gap:8px; margin-top:10px;}
-      .type-btn{background:#eef2ff; color:#1f2a44;}
-      .type-btn.active{background:#2b7cff; color:#fff;}
-      .field{width:100%; box-sizing:border-box; margin-top:10px; padding:10px 12px; border:1px solid #d6dbe7; border-radius:10px;}
-      .error{color:#b42318; margin-top:8px; font-size:14px;}
+      body { font-family: system-ui, sans-serif; margin: 0; background: #f6f7fb; }
+      .card { border: 1px solid #ddd; border-radius: 16px; padding: 16px; background: white; max-width: 540px; margin: 16px auto; }
+      button { padding: 12px 14px; border-radius: 12px; border: 0; cursor: pointer; }
+      .pet-card { border: 1px solid #ececec; border-radius: 12px; padding: 12px; margin-top: 10px; cursor: pointer; }
+      .pet-type { font-size: 13px; color: #555; }
+      .primary { background: #2b7cff; color: #fff; }
+      .muted { color: #666; }
+      .hidden { display: none; }
+      .row { display: flex; gap: 8px; margin-top: 10px; }
+      .type-btn { background: #eef2ff; color: #1f2a44; }
+      .type-btn.active { background: #2b7cff; color: #fff; }
+      .field { width: 100%; box-sizing: border-box; margin-top: 10px; padding: 10px 12px; border: 1px solid #d6dbe7; border-radius: 10px; }
+      .error { color: #b42318; margin-top: 8px; font-size: 14px; }
+      .back-btn { background: #eef2ff; color: #1f2a44; }
+      .pet-banner { border-radius: 14px; padding: 18px; font-size: 42px; text-align: center; margin: 10px 0 16px; }
+      .pet-banner.dog { background: #e7f0ff; }
+      .pet-banner.cat { background: #ffeede; }
+      .pet-name { font-size: 28px; font-weight: 700; margin: 0 0 16px; }
+      .tile-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+      .tile { border: 1px solid #dbe1f0; background: #f8faff; color: #1f2a44; text-align: left; min-height: 64px; }
+      .subtiles { margin-top: 8px; display: flex; gap: 8px; }
+      .subtile { background: #eef2ff; color: #1f2a44; flex: 1; }
     </style>
   </head>
   <body>
     <div class="card">
       <h2>PetPass 🐶🐱</h2>
       <div id="u" class="muted">Загрузка...</div>
-      <div id="pets"></div>
 
-      <div id="actions" class="row">
-        <button id="toggleFormBtn" class="primary">+ Добавить питомца</button>
+      <div id="screenList">
+        <div id="pets"></div>
+
+        <div id="actions" class="row">
+          <button id="toggleFormBtn" class="primary">+ Добавить питомца</button>
+        </div>
+
+        <div id="createPetForm" class="hidden">
+          <input id="petNameInput" class="field" type="text" placeholder="Имя питомца" maxlength="64" />
+          <div class="row">
+            <button id="dogTypeBtn" type="button" class="type-btn active">🐶 Собакен</button>
+            <button id="catTypeBtn" type="button" class="type-btn">🐱 Котофей</button>
+          </div>
+          <div class="row">
+            <button id="savePetBtn" type="button" class="primary">Сохранить</button>
+          </div>
+          <div id="formError" class="error"></div>
+        </div>
       </div>
 
-      <div id="createPetForm" class="hidden">
-        <input id="petNameInput" class="field" type="text" placeholder="Имя питомца" maxlength="64" />
-        <div class="row">
-          <button id="dogTypeBtn" type="button" class="type-btn active">🐶 Собакен</button>
-          <button id="catTypeBtn" type="button" class="type-btn">🐱 Котофей</button>
-        </div>
-        <div class="row">
-          <button id="savePetBtn" type="button" class="primary">Сохранить</button>
-        </div>
-        <div id="formError" class="error"></div>
-      </div>
+      <div id="screenPet" class="hidden"></div>
+      <div id="screenSection" class="hidden"></div>
 
       <div class="row">
         <button onclick="Telegram.WebApp.close()">Закрыть</button>
@@ -64,6 +79,19 @@
       const dogTypeBtn = document.getElementById('dogTypeBtn');
       const catTypeBtn = document.getElementById('catTypeBtn');
       const formErrorEl = document.getElementById('formError');
+      const screenListEl = document.getElementById('screenList');
+      const screenPetEl = document.getElementById('screenPet');
+      const screenSectionEl = document.getElementById('screenSection');
+
+      const typeLabel = { dog: '🐶 Собакен', cat: '🐱 Котофей' };
+      const sectionLabel = {
+        info: 'Информация о питомце',
+        vaccination: 'Вакцинация',
+        treatment: 'Обработка',
+        weight: 'Вес',
+        walk: 'Прогулка',
+        events: 'События',
+      };
 
       let selectedType = 'dog';
 
@@ -73,25 +101,45 @@
         catTypeBtn.classList.toggle('active', type === 'cat');
       }
 
+      function getApiHeaders() {
+        return {
+          'Content-Type': 'application/json',
+          'X-TG-USER-ID': String(tgUserId),
+        };
+      }
+
+      function showScreen(screen) {
+        screenListEl.classList.toggle('hidden', screen !== 'list');
+        screenPetEl.classList.toggle('hidden', screen !== 'pet');
+        screenSectionEl.classList.toggle('hidden', screen !== 'section');
+      }
+
+      function setHash(nextHash) {
+        if (window.location.hash === nextHash) {
+          renderRoute();
+          return;
+        }
+        window.location.hash = nextHash;
+      }
+
       function renderPets(pets) {
         if (!pets.length) {
           petsEl.innerHTML = '<p class="muted">Питомцев пока нет.</p>';
           return;
         }
 
-        const typeLabel = { dog: '🐶 Собакен', cat: '🐱 Котофей' };
         petsEl.innerHTML = pets
           .map((pet) => (
-            `<div class="pet-card"><strong>${pet.name}</strong><div class="pet-type">${typeLabel[pet.type] || pet.type}</div></div>`
+            `<div class="pet-card" data-pet-id="${pet.id}"><strong>${pet.name}</strong><div class="pet-type">${typeLabel[pet.type] || pet.type}</div></div>`
           ))
           .join('');
-      }
 
-      function getApiHeaders() {
-        return {
-          'Content-Type': 'application/json',
-          'X-TG-USER-ID': String(tgUserId),
-        };
+        petsEl.querySelectorAll('.pet-card').forEach((cardEl) => {
+          cardEl.addEventListener('click', () => {
+            const petId = cardEl.getAttribute('data-pet-id');
+            setHash(`#pet/${petId}`);
+          });
+        });
       }
 
       async function loadPets() {
@@ -107,6 +155,69 @@
         const data = await response.json();
         const pets = Array.isArray(data.pets) ? data.pets : [];
         renderPets(pets);
+      }
+
+      async function fetchPet(petId) {
+        const response = await fetch(`/api/pets/${petId}`, {
+          method: 'GET',
+          headers: getApiHeaders(),
+        });
+
+        if (response.status === 404) {
+          return null;
+        }
+
+        if (!response.ok) {
+          throw new Error('Не удалось получить профиль питомца');
+        }
+
+        const data = await response.json();
+        return data.pet || null;
+      }
+
+      function renderPetProfile(pet) {
+        const petEmoji = pet.type === 'cat' ? '🐱' : '🐶';
+        const bannerClass = pet.type === 'cat' ? 'cat' : 'dog';
+
+        screenPetEl.innerHTML = `
+          <div class="row"><button class="back-btn" id="backToListBtn">← Назад</button></div>
+          <div class="pet-banner ${bannerClass}">${petEmoji}</div>
+          <h3 class="pet-name">${pet.name}</h3>
+
+          <div class="tile-grid">
+            <button class="tile" data-section="info">Информация о питомце</button>
+            <button class="tile" data-section="vaccination">Вакцинация</button>
+            <div>
+              <button class="tile" data-section="treatment">Обработка</button>
+              <div class="subtiles">
+                <button class="subtile" data-section="treatment-fleas">от блох</button>
+                <button class="subtile" data-section="treatment-worms">от глистов</button>
+              </div>
+            </div>
+            <button class="tile" data-section="weight">Вес</button>
+            <button class="tile" data-section="walk">Прогулка</button>
+            <button class="tile" data-section="events">События</button>
+          </div>
+        `;
+
+        document.getElementById('backToListBtn').addEventListener('click', () => setHash('#list'));
+        screenPetEl.querySelectorAll('[data-section]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const section = btn.getAttribute('data-section');
+            setHash(`#pet/${pet.id}/${section}`);
+          });
+        });
+      }
+
+      function renderSectionScreen(petId, section) {
+        const sectionText = sectionLabel[section] || section;
+        screenSectionEl.innerHTML = `
+          <div class="row"><button class="back-btn" id="backToProfileBtn">← Назад в профиль</button></div>
+          <h3>${sectionText}</h3>
+          <p class="muted">Скоро будет раздел ${sectionText}</p>
+        `;
+
+        document.getElementById('backToProfileBtn').addEventListener('click', () => setHash(`#pet/${petId}`));
       }
 
       function toggleForm() {
@@ -149,10 +260,55 @@
         }
       }
 
+      async function renderRoute() {
+        if (!tgUserId) {
+          showScreen('list');
+          return;
+        }
+
+        const hash = window.location.hash || '#list';
+        const route = hash.replace(/^#/, '');
+
+        if (route === 'list') {
+          showScreen('list');
+          return;
+        }
+
+        const petRouteMatch = route.match(/^pet\/(\d+)(?:\/(.+))?$/);
+        if (!petRouteMatch) {
+          setHash('#list');
+          return;
+        }
+
+        const petId = petRouteMatch[1];
+        const section = petRouteMatch[2];
+
+        try {
+          const pet = await fetchPet(petId);
+          if (!pet) {
+            setHash('#list');
+            return;
+          }
+
+          if (section) {
+            renderSectionScreen(petId, section);
+            showScreen('section');
+            return;
+          }
+
+          renderPetProfile(pet);
+          showScreen('pet');
+        } catch (error) {
+          userEl.innerText = 'Не удалось загрузить экран питомца.';
+          setHash('#list');
+        }
+      }
+
       async function bootstrap() {
         if (!tgUserId) {
           userEl.innerText = 'Открыто не из Telegram';
           renderPets([]);
+          showScreen('list');
           return;
         }
 
@@ -161,9 +317,14 @@
 
         try {
           await loadPets();
+          if (!window.location.hash) {
+            window.location.hash = '#list';
+          }
+          await renderRoute();
         } catch (error) {
           userEl.innerText = 'Сервер недоступен. Попробуйте позже.';
           renderPets([]);
+          showScreen('list');
         }
       }
 
@@ -171,6 +332,7 @@
       dogTypeBtn.addEventListener('click', () => setType('dog'));
       catTypeBtn.addEventListener('click', () => setType('cat'));
       savePetBtn.addEventListener('click', savePet);
+      window.addEventListener('hashchange', renderRoute);
 
       bootstrap();
     </script>
