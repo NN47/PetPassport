@@ -28,6 +28,12 @@
       .tile { border: 1px solid #dbe1f0; background: #f8faff; color: #1f2a44; text-align: left; min-height: 64px; }
       .subtiles { margin-top: 8px; display: flex; gap: 8px; }
       .subtile { background: #eef2ff; color: #1f2a44; flex: 1; }
+      .status { margin-top: 10px; padding: 10px 12px; border-radius: 10px; font-size: 14px; }
+      .status.success { background: #e8f8ef; color: #0f5132; border: 1px solid #b7ebcc; }
+      .status.error { background: #fdecec; color: #842029; border: 1px solid #f5c2c7; }
+      .label { display: block; margin-top: 10px; margin-bottom: 4px; font-size: 14px; color: #374151; }
+      .birth-mode { display: flex; gap: 10px; margin-top: 8px; }
+      .birth-mode label { display: flex; align-items: center; gap: 6px; font-size: 14px; }
     </style>
   </head>
   <body>
@@ -94,6 +100,7 @@
       };
 
       let selectedType = 'dog';
+      let infoStatusTimer = null;
 
       function setType(type) {
         selectedType = type;
@@ -210,6 +217,11 @@
       }
 
       function renderSectionScreen(petId, section) {
+        if (section === 'info') {
+          renderPetInfoScreen(petId);
+          return;
+        }
+
         const sectionText = sectionLabel[section] || section;
         screenSectionEl.innerHTML = `
           <div class="row"><button class="back-btn" id="backToProfileBtn">← Назад в профиль</button></div>
@@ -218,6 +230,161 @@
         `;
 
         document.getElementById('backToProfileBtn').addEventListener('click', () => setHash(`#pet/${petId}`));
+      }
+
+      function setInfoStatus(type, message) {
+        const statusEl = document.getElementById('infoStatus');
+        if (!statusEl) return;
+
+        statusEl.className = `status ${type}`;
+        statusEl.innerText = message;
+        statusEl.classList.remove('hidden');
+
+        if (infoStatusTimer) {
+          clearTimeout(infoStatusTimer);
+          infoStatusTimer = null;
+        }
+
+        if (type === 'success') {
+          infoStatusTimer = setTimeout(() => {
+            statusEl.classList.add('hidden');
+          }, 1500);
+        }
+      }
+
+      function toggleBirthMode(mode) {
+        const dateWrap = document.getElementById('birthDateWrap');
+        const yearWrap = document.getElementById('birthYearWrap');
+        const modeDateInput = document.getElementById('birthModeDate');
+        const modeYearInput = document.getElementById('birthModeYear');
+
+        const isDate = mode === 'date';
+        dateWrap.classList.toggle('hidden', !isDate);
+        yearWrap.classList.toggle('hidden', isDate);
+        modeDateInput.checked = isDate;
+        modeYearInput.checked = !isDate;
+      }
+
+      async function savePetInfo(petId) {
+        const saveBtn = document.getElementById('saveInfoBtn');
+        const name = document.getElementById('infoNameInput').value.trim();
+        const sex = document.getElementById('infoSexSelect').value;
+        const chipNumberRaw = document.getElementById('infoChipInput').value.trim();
+        const birthMode = document.querySelector('input[name="birthMode"]:checked')?.value || 'date';
+        const birthDate = document.getElementById('infoBirthDate').value;
+        const birthYearRaw = document.getElementById('infoBirthYear').value.trim();
+
+        if (!name) {
+          setInfoStatus('error', 'Имя обязательно для заполнения.');
+          return;
+        }
+
+        const payload = {
+          name,
+          sex,
+          birth_mode: birthMode,
+          chip_number: chipNumberRaw || null,
+        };
+
+        if (birthMode === 'date') {
+          if (!birthDate) {
+            setInfoStatus('error', 'Укажите дату рождения.');
+            return;
+          }
+          payload.birth_date = birthDate;
+        } else {
+          const birthYear = Number(birthYearRaw);
+          if (!Number.isInteger(birthYear) || birthYear < 1900 || birthYear > 2100) {
+            setInfoStatus('error', 'Год рождения должен быть от 1900 до 2100.');
+            return;
+          }
+          payload.birth_year = birthYear;
+        }
+
+        saveBtn.disabled = true;
+        try {
+          const response = await fetch(`/api/pets/${petId}`, {
+            method: 'PATCH',
+            headers: getApiHeaders(),
+            body: JSON.stringify(payload),
+          });
+
+          if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || 'Не удалось сохранить изменения');
+          }
+
+          setInfoStatus('success', 'Сохранено ✅');
+          setTimeout(() => setHash(`#pet/${petId}`), 800);
+        } catch (error) {
+          setInfoStatus('error', error.message || 'Ошибка сохранения. Попробуйте еще раз.');
+        } finally {
+          saveBtn.disabled = false;
+        }
+      }
+
+      async function renderPetInfoScreen(petId) {
+        screenSectionEl.innerHTML = `
+          <div class="row"><button class="back-btn" id="backToProfileBtn">← Назад</button></div>
+          <h3>Информация о питомце</h3>
+          <label class="label" for="infoNameInput">Имя</label>
+          <input id="infoNameInput" class="field" type="text" maxlength="64" />
+
+          <label class="label" for="infoSexSelect">Пол</label>
+          <select id="infoSexSelect" class="field">
+            <option value="unknown">Неизвестно</option>
+            <option value="male">Самец</option>
+            <option value="female">Самка</option>
+          </select>
+
+          <label class="label">Дата рождения</label>
+          <div class="birth-mode">
+            <label><input id="birthModeDate" type="radio" name="birthMode" value="date" checked /> Точная дата</label>
+            <label><input id="birthModeYear" type="radio" name="birthMode" value="year" /> Только год</label>
+          </div>
+
+          <div id="birthDateWrap">
+            <input id="infoBirthDate" class="field" type="date" />
+          </div>
+          <div id="birthYearWrap" class="hidden">
+            <input id="infoBirthYear" class="field" type="number" min="1900" max="2100" placeholder="Например, 2020" />
+          </div>
+
+          <label class="label" for="infoChipInput">Номер чипа (опционально)</label>
+          <input id="infoChipInput" class="field" type="text" maxlength="128" />
+
+          <div class="row">
+            <button id="saveInfoBtn" type="button" class="primary">Сохранить</button>
+          </div>
+          <div id="infoStatus" class="status hidden"></div>
+        `;
+
+        document.getElementById('backToProfileBtn').addEventListener('click', () => setHash(`#pet/${petId}`));
+        document.getElementById('birthModeDate').addEventListener('change', () => toggleBirthMode('date'));
+        document.getElementById('birthModeYear').addEventListener('change', () => toggleBirthMode('year'));
+        document.getElementById('saveInfoBtn').addEventListener('click', () => savePetInfo(petId));
+
+        try {
+          const pet = await fetchPet(petId);
+          if (!pet) {
+            setHash('#list');
+            return;
+          }
+
+          document.getElementById('infoNameInput').value = pet.name || '';
+          document.getElementById('infoSexSelect').value = pet.sex || 'unknown';
+          document.getElementById('infoChipInput').value = pet.chip_number || '';
+
+          if (pet.birth_year) {
+            document.getElementById('infoBirthYear').value = String(pet.birth_year);
+            toggleBirthMode('year');
+          } else {
+            document.getElementById('infoBirthDate').value = pet.birth_date || '';
+            toggleBirthMode('date');
+          }
+        } catch (error) {
+          setInfoStatus('error', 'Не удалось загрузить данные питомца.');
+        }
       }
 
       function toggleForm() {
