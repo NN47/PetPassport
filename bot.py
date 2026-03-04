@@ -141,6 +141,14 @@ def upsert_user_and_get_pets(user_data: dict) -> tuple[dict, list[dict]]:
     return user_payload, pets_payload
 
 
+def get_user_id_by_tg_id(tg_user_id: int) -> int | None:
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute("SELECT id FROM users WHERE tg_user_id = %s", (tg_user_id,))
+        user_row = db_cursor.fetchone()
+    return user_row[0] if user_row else None
+
+
 def ensure_user_by_tg_id(tg_user_id: int, username: str | None = None) -> int:
     conn = get_db_connection()
     with conn.cursor() as db_cursor:
@@ -148,12 +156,11 @@ def ensure_user_by_tg_id(tg_user_id: int, username: str | None = None) -> int:
             """
             INSERT INTO users (tg_user_id, username)
             VALUES (%s, %s)
-            ON CONFLICT (tg_user_id)
-            DO UPDATE SET username = COALESCE(EXCLUDED.username, users.username)
-            RETURNING id
+            ON CONFLICT (tg_user_id) DO NOTHING
             """,
             (tg_user_id, username),
         )
+        db_cursor.execute("SELECT id FROM users WHERE tg_user_id = %s", (tg_user_id,))
         user_row = db_cursor.fetchone()
     conn.commit()
     return user_row[0]
@@ -250,7 +257,10 @@ async def api_get_pets(request: web.Request) -> web.Response:
     except ValueError as exc:
         return web.json_response({"error": str(exc)}, status=400)
 
-    user_id = ensure_user_by_tg_id(tg_user_id)
+    user_id = get_user_id_by_tg_id(tg_user_id)
+    if user_id is None:
+        return web.json_response({"pets": []})
+
     conn = get_db_connection()
     with conn.cursor() as db_cursor:
         db_cursor.execute(
