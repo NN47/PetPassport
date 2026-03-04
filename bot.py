@@ -37,11 +37,23 @@ kb = InlineKeyboardMarkup(
     ]
 )
 
-# DB connection (простая версия)
-conn = psycopg2.connect(DATABASE_URL)
+_db_conn = None
+
+
+def get_db_connection():
+    global _db_conn
+
+    if _db_conn is None or _db_conn.closed != 0:
+        if _db_conn is not None:
+            print("Reconnecting to database...")
+        _db_conn = psycopg2.connect(DATABASE_URL)
+        print("Database connected")
+
+    return _db_conn
 
 
 def ensure_user_columns() -> None:
+    conn = get_db_connection()
     with conn.cursor() as db_cursor:
         db_cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT")
         db_cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name TEXT")
@@ -90,6 +102,7 @@ def upsert_user_and_get_pets(user_data: dict) -> tuple[dict, list[dict]]:
     first_name = user_data.get("first_name")
     last_name = user_data.get("last_name")
 
+    conn = get_db_connection()
     with conn.cursor() as db_cursor:
         db_cursor.execute(
             """
@@ -129,6 +142,7 @@ def upsert_user_and_get_pets(user_data: dict) -> tuple[dict, list[dict]]:
 
 
 def ensure_user_by_tg_id(tg_user_id: int, username: str | None = None) -> int:
+    conn = get_db_connection()
     with conn.cursor() as db_cursor:
         db_cursor.execute(
             """
@@ -167,6 +181,7 @@ async def start_handler(message: types.Message):
     first_name = message.from_user.first_name
     last_name = message.from_user.last_name
 
+    conn = get_db_connection()
     with conn.cursor() as db_cursor:
         db_cursor.execute(
             """
@@ -236,6 +251,7 @@ async def api_get_pets(request: web.Request) -> web.Response:
         return web.json_response({"error": str(exc)}, status=400)
 
     user_id = ensure_user_by_tg_id(tg_user_id)
+    conn = get_db_connection()
     with conn.cursor() as db_cursor:
         db_cursor.execute(
             """
@@ -273,6 +289,7 @@ async def api_create_pet(request: web.Request) -> web.Response:
 
     user_id = ensure_user_by_tg_id(tg_user_id)
 
+    conn = get_db_connection()
     with conn.cursor() as db_cursor:
         db_cursor.execute(
             """
