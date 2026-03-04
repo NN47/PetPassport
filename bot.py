@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import time
+from datetime import date
 from urllib.parse import parse_qsl
 
 import psycopg2
@@ -186,6 +187,18 @@ def ensure_user_by_tg_id(tg_user_id: int, username: str | None = None) -> int:
         user_row = db_cursor.fetchone()
     conn.commit()
     return user_row[0]
+
+
+def get_owned_pet_id(tg_user_id: int, pet_id: int) -> int | None:
+    user_id = get_user_id_by_tg_id(tg_user_id)
+    if user_id is None:
+        return None
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute("SELECT id FROM pets WHERE id = %s AND user_id = %s", (pet_id, user_id))
+        pet_row = db_cursor.fetchone()
+    return pet_row[0] if pet_row else None
 
 
 def get_tg_user_id_from_header(request: web.Request) -> int:
@@ -522,6 +535,129 @@ async def api_patch_pet(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "pet": pet_payload})
 
 
+async def api_get_pet_vaccinations(request: web.Request) -> web.Response:
+    try:
+        tg_user_id = get_tg_user_id_from_header(request)
+    except ValueError as exc:
+        return web.json_response({"error": str(exc)}, status=400)
+
+    pet_id_raw = request.match_info.get("pet_id", "")
+    try:
+        pet_id = int(pet_id_raw)
+    except ValueError:
+        return web.json_response({"error": "pet_id must be an integer"}, status=400)
+
+    owned_pet_id = get_owned_pet_id(tg_user_id, pet_id)
+    if owned_pet_id is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            SELECT id, vaccine_name, date_given, next_due, notes
+            FROM vaccinations
+            WHERE pet_id = %s
+            ORDER BY date_given DESC, id DESC
+            """,
+            (owned_pet_id,),
+        )
+        rows = db_cursor.fetchall()
+
+    vaccinations = [
+        {
+            "id": row[0],
+            "vaccine_name": row[1],
+            "date_given": row[2].isoformat(),
+            "next_due": row[3].isoformat() if row[3] else None,
+            "notes": row[4],
+        }
+        for row in rows
+    ]
+    return web.json_response({"vaccinations": vaccinations})
+
+
+async def api_create_pet_vaccination(request: web.Request) -> web.Response:
+    try:
+        tg_user_id = get_tg_user_id_from_header(request)
+    except ValueError as exc:
+        return web.json_response({"error": str(exc)}, status=400)
+
+    pet_id_raw = request.match_info.get("pet_id", "")
+    try:
+        pet_id = int(pet_id_raw)
+    except ValueError:
+        return web.json_response({"error": "pet_id must be an integer"}, status=400)
+
+    owned_pet_id = get_owned_pet_id(tg_user_id, pet_id)
+    if owned_pet_id is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    if not isinstance(payload, dict):
+        return web.json_response({"error": "JSON body must be an object"}, status=400)
+
+    vaccine_name = str(payload.get("vaccine_name", "")).strip()
+    if not vaccine_name:
+        return web.json_response({"error": "vaccine_name is required"}, status=400)
+
+    date_given_raw = payload.get("date_given")
+    if not isinstance(date_given_raw, str):
+        return web.json_response({"error": "date_given is required"}, status=400)
+
+    try:
+        date_given = date.fromisoformat(date_given_raw)
+    except ValueError:
+        return web.json_response({"error": "date_given must be YYYY-MM-DD"}, status=400)
+
+    next_due_raw = payload.get("next_due")
+    next_due = None
+    if next_due_raw is not None:
+        if not isinstance(next_due_raw, str):
+            return web.json_response({"error": "next_due must be YYYY-MM-DD"}, status=400)
+        if next_due_raw.strip() == "":
+            next_due = None
+        else:
+            try:
+                next_due = date.fromisoformat(next_due_raw)
+            except ValueError:
+                return web.json_response({"error": "next_due must be YYYY-MM-DD"}, status=400)
+
+    notes = payload.get("notes")
+    if notes is None:
+        prepared_notes = None
+    elif isinstance(notes, str):
+        prepared_notes = notes.strip() or None
+    else:
+        return web.json_response({"error": "notes must be string"}, status=400)
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            INSERT INTO vaccinations (pet_id, vaccine_name, date_given, next_due, notes)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id, vaccine_name, date_given, next_due, notes
+            """,
+            (owned_pet_id, vaccine_name, date_given, next_due, prepared_notes),
+        )
+        row = db_cursor.fetchone()
+    conn.commit()
+
+    vaccination_payload = {
+        "id": row[0],
+        "vaccine_name": row[1],
+        "date_given": row[2].isoformat(),
+        "next_due": row[3].isoformat() if row[3] else None,
+        "notes": row[4],
+    }
+    return web.json_response({"ok": True, "vaccination": vaccination_payload})
+
+
 async def start_web_server() -> None:
     ensure_user_columns()
 
@@ -533,6 +669,8 @@ async def start_web_server() -> None:
     app.router.add_post("/api/pets", api_create_pet)
     app.router.add_get("/api/pets/{pet_id}", api_get_pet)
     app.router.add_patch("/api/pets/{pet_id}", api_patch_pet)
+    app.router.add_get("/api/pets/{pet_id}/vaccinations", api_get_pet_vaccinations)
+    app.router.add_post("/api/pets/{pet_id}/vaccinations", api_create_pet_vaccination)
 
     runner = web.AppRunner(app)
     await runner.setup()

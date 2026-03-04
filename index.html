@@ -92,7 +92,7 @@
       const typeLabel = { dog: '🐶 Собакен', cat: '🐱 Котофей' };
       const sectionLabel = {
         info: 'Информация о питомце',
-        vaccination: 'Вакцинация',
+        vaccinations: 'Вакцинация',
         treatment: 'Обработка',
         weight: 'Вес',
         walk: 'Прогулка',
@@ -101,6 +101,13 @@
 
       let selectedType = 'dog';
       let infoStatusTimer = null;
+
+      function formatDateRu(isoDate) {
+        if (!isoDate) return '';
+        const [year, month, day] = String(isoDate).split('-');
+        if (!year || !month || !day) return isoDate;
+        return `${day}.${month}.${year}`;
+      }
 
       function setType(type) {
         selectedType = type;
@@ -193,7 +200,7 @@
 
           <div class="tile-grid">
             <button class="tile" data-section="info">Информация о питомце</button>
-            <button class="tile" data-section="vaccination">Вакцинация</button>
+            <button class="tile" data-section="vaccinations">Вакцинация</button>
             <div>
               <button class="tile" data-section="treatment">Обработка</button>
               <div class="subtiles">
@@ -222,6 +229,16 @@
           return;
         }
 
+        if (section === 'vaccination') {
+          setHash(`#pet/${petId}/vaccinations`);
+          return;
+        }
+
+        if (section === 'vaccinations') {
+          renderVaccinationsScreen(petId);
+          return;
+        }
+
         const sectionText = sectionLabel[section] || section;
         screenSectionEl.innerHTML = `
           <div class="row"><button class="back-btn" id="backToProfileBtn">← Назад в профиль</button></div>
@@ -230,6 +247,193 @@
         `;
 
         document.getElementById('backToProfileBtn').addEventListener('click', () => setHash(`#pet/${petId}`));
+      }
+
+      async function fetchVaccinations(petId) {
+        const response = await fetch(`/api/pets/${petId}/vaccinations`, {
+          method: 'GET',
+          headers: getApiHeaders(),
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          const error = new Error(errData.error || 'Не удалось загрузить вакцинации');
+          error.status = response.status;
+          throw error;
+        }
+
+        const data = await response.json();
+        return Array.isArray(data.vaccinations) ? data.vaccinations : [];
+      }
+
+      async function createVaccination(petId, payload) {
+        const response = await fetch(`/api/pets/${petId}/vaccinations`, {
+          method: 'POST',
+          headers: getApiHeaders(),
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          const error = new Error(errData.error || 'Не удалось сохранить вакцинацию');
+          error.status = response.status;
+          throw error;
+        }
+
+        return response.json();
+      }
+
+      function setVaccinationStatus(type, message) {
+        const statusEl = document.getElementById('vaccinationStatus');
+        if (!statusEl) return;
+        statusEl.className = `status ${type}`;
+        statusEl.innerText = message;
+        statusEl.classList.remove('hidden');
+      }
+
+      function hideVaccinationStatus() {
+        const statusEl = document.getElementById('vaccinationStatus');
+        if (!statusEl) return;
+        statusEl.classList.add('hidden');
+      }
+
+      function renderVaccinationsList(vaccinations) {
+        const listEl = document.getElementById('vaccinationsList');
+        if (!listEl) return;
+
+        if (!vaccinations.length) {
+          listEl.innerHTML = '<p class="muted">Записей вакцинации пока нет.</p>';
+          return;
+        }
+
+        listEl.innerHTML = vaccinations
+          .map((item) => {
+            const nextDueText = item.next_due
+              ? `<div class="muted">Следующая: ${formatDateRu(item.next_due)}</div>`
+              : '';
+            const notesText = item.notes
+              ? `<div class="muted">Заметка: ${item.notes}</div>`
+              : '';
+
+            return `
+              <div class="pet-card">
+                <strong>${formatDateRu(item.date_given)} — ${item.vaccine_name}</strong>
+                ${nextDueText}
+                ${notesText}
+              </div>
+            `;
+          })
+          .join('');
+      }
+
+      async function refreshVaccinations(petId) {
+        const vaccinations = await fetchVaccinations(petId);
+        renderVaccinationsList(vaccinations);
+      }
+
+      function resetVaccinationForm() {
+        document.getElementById('vaccVaccineName').value = '';
+        document.getElementById('vaccDateGiven').value = '';
+        document.getElementById('vaccNextDue').value = '';
+        document.getElementById('vaccNotes').value = '';
+      }
+
+      function toggleVaccinationForm(show) {
+        const formEl = document.getElementById('vaccinationForm');
+        const addBtn = document.getElementById('showVaccinationFormBtn');
+        if (!formEl || !addBtn) return;
+        formEl.classList.toggle('hidden', !show);
+        addBtn.classList.toggle('hidden', show);
+      }
+
+      async function renderVaccinationsScreen(petId) {
+        screenSectionEl.innerHTML = `
+          <div class="row"><button class="back-btn" id="backToProfileBtn">← Назад</button></div>
+          <h3>Вакцинация</h3>
+          <div id="vaccinationStatus" class="status hidden"></div>
+          <div id="vaccinationsList"></div>
+
+          <div class="row">
+            <button id="showVaccinationFormBtn" type="button" class="primary">+ Добавить вакцинацию</button>
+          </div>
+
+          <div id="vaccinationForm" class="hidden">
+            <label class="label" for="vaccVaccineName">Название вакцины</label>
+            <input id="vaccVaccineName" class="field" type="text" maxlength="128" />
+
+            <label class="label" for="vaccDateGiven">Дата вакцинации</label>
+            <input id="vaccDateGiven" class="field" type="date" />
+
+            <label class="label" for="vaccNextDue">Следующая вакцинация (опционально)</label>
+            <input id="vaccNextDue" class="field" type="date" />
+
+            <label class="label" for="vaccNotes">Заметка (опционально)</label>
+            <textarea id="vaccNotes" class="field" rows="3" maxlength="500"></textarea>
+
+            <div class="row">
+              <button id="saveVaccinationBtn" type="button" class="primary">Сохранить</button>
+              <button id="cancelVaccinationBtn" type="button" class="back-btn">Отмена</button>
+            </div>
+          </div>
+        `;
+
+        document.getElementById('backToProfileBtn').addEventListener('click', () => setHash(`#pet/${petId}`));
+        document.getElementById('showVaccinationFormBtn').addEventListener('click', () => {
+          hideVaccinationStatus();
+          toggleVaccinationForm(true);
+        });
+
+        document.getElementById('cancelVaccinationBtn').addEventListener('click', () => {
+          resetVaccinationForm();
+          hideVaccinationStatus();
+          toggleVaccinationForm(false);
+        });
+
+        document.getElementById('saveVaccinationBtn').addEventListener('click', async () => {
+          const saveBtn = document.getElementById('saveVaccinationBtn');
+          const vaccineName = document.getElementById('vaccVaccineName').value.trim();
+          const dateGiven = document.getElementById('vaccDateGiven').value;
+          const nextDue = document.getElementById('vaccNextDue').value;
+          const notes = document.getElementById('vaccNotes').value.trim();
+
+          if (!vaccineName) {
+            setVaccinationStatus('error', 'Укажите название вакцины.');
+            return;
+          }
+          if (!dateGiven) {
+            setVaccinationStatus('error', 'Укажите дату вакцинации.');
+            return;
+          }
+
+          const payload = {
+            vaccine_name: vaccineName,
+            date_given: dateGiven,
+            next_due: nextDue || null,
+            notes: notes || null,
+          };
+
+          saveBtn.disabled = true;
+          try {
+            await createVaccination(petId, payload);
+            setVaccinationStatus('success', 'Вакцинация сохранена ✅');
+            resetVaccinationForm();
+            toggleVaccinationForm(false);
+            await refreshVaccinations(petId);
+          } catch (error) {
+            const statusCodeText = error.status ? ` (${error.status})` : '';
+            setVaccinationStatus('error', `Ошибка${statusCodeText}: ${error.message || 'не удалось сохранить запись.'}`);
+          } finally {
+            saveBtn.disabled = false;
+          }
+        });
+
+        try {
+          await refreshVaccinations(petId);
+        } catch (error) {
+          const statusCodeText = error.status ? ` (${error.status})` : '';
+          setVaccinationStatus('error', `Ошибка${statusCodeText}: ${error.message || 'не удалось загрузить список вакцинаций.'}`);
+          renderVaccinationsList([]);
+        }
       }
 
       function setInfoStatus(type, message) {
