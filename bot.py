@@ -4,11 +4,13 @@ import psycopg2
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 
 from aiohttp import web
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
+WEBAPP_URL = "https://petpass-aerc.onrender.com/"
 
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN is not set")
@@ -17,6 +19,17 @@ if not DATABASE_URL:
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
+
+kb = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="📱 Открыть дневник питомца",
+                web_app=WebAppInfo(url=WEBAPP_URL),
+            )
+        ]
+    ]
+)
 
 # DB connection (простая версия)
 conn = psycopg2.connect(DATABASE_URL)
@@ -44,6 +57,7 @@ async def start_handler(message: types.Message):
         "Это дневник питомца.\n"
         "Скоро здесь можно будет добавить собакена или котофея."
     )
+    await message.answer("Открывай дневник 👇", reply_markup=kb)
 
 
 # ---------- Healthcheck HTTP server ----------
@@ -53,7 +67,7 @@ async def health(request: web.Request) -> web.Response:
 
 async def start_web_server() -> None:
     app = web.Application()
-    app.router.add_get("/", health)
+    app.router.add_get("/", lambda request: web.FileResponse("index.html"))
     app.router.add_get("/health", health)
 
     runner = web.AppRunner(app)
