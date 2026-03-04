@@ -316,6 +316,41 @@ async def api_create_pet(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "pet": pet_payload})
 
 
+async def api_get_pet(request: web.Request) -> web.Response:
+    try:
+        tg_user_id = get_tg_user_id_from_header(request)
+    except ValueError as exc:
+        return web.json_response({"error": str(exc)}, status=400)
+
+    pet_id_raw = request.match_info.get("pet_id", "")
+    try:
+        pet_id = int(pet_id_raw)
+    except ValueError:
+        return web.json_response({"error": "pet_id must be an integer"}, status=400)
+
+    user_id = get_user_id_by_tg_id(tg_user_id)
+    if user_id is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            SELECT id, name, type
+            FROM pets
+            WHERE id = %s AND user_id = %s
+            """,
+            (pet_id, user_id),
+        )
+        pet_row = db_cursor.fetchone()
+
+    if pet_row is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    pet_payload = {"id": pet_row[0], "name": pet_row[1], "type": pet_row[2]}
+    return web.json_response({"pet": pet_payload})
+
+
 async def start_web_server() -> None:
     ensure_user_columns()
 
@@ -325,6 +360,7 @@ async def start_web_server() -> None:
     app.router.add_post("/api/auth", auth_handler)
     app.router.add_get("/api/pets", api_get_pets)
     app.router.add_post("/api/pets", api_create_pet)
+    app.router.add_get("/api/pets/{pet_id}", api_get_pet)
 
     runner = web.AppRunner(app)
     await runner.setup()
