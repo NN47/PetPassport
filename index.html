@@ -79,9 +79,10 @@
           return;
         }
 
+        const typeLabel = { dog: '🐶 Собакен', cat: '🐱 Котофей' };
         petsEl.innerHTML = pets
           .map((pet) => (
-            `<div class="pet-card"><strong>${pet.name}</strong><div class="pet-type">${pet.type}</div></div>`
+            `<div class="pet-card"><strong>${pet.name}</strong><div class="pet-type">${typeLabel[pet.type] || pet.type}</div></div>`
           ))
           .join('');
       }
@@ -110,7 +111,9 @@
 
       function toggleForm() {
         formErrorEl.innerText = '';
+        const willShow = formEl.classList.contains('hidden');
         formEl.classList.toggle('hidden');
+        toggleFormBtn.innerText = willShow ? 'Скрыть форму' : '+ Добавить питомца';
       }
 
       async function savePet() {
@@ -135,6 +138,7 @@
           }
 
           formEl.classList.add('hidden');
+          toggleFormBtn.innerText = '+ Добавить питомца';
           petNameInput.value = '';
           setType('dog');
           await loadPets();
