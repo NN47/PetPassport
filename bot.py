@@ -38,6 +38,7 @@ kb = InlineKeyboardMarkup(
 )
 
 _db_conn = None
+_pets_columns_cache: set[str] | None = None
 
 
 def get_db_connection():
@@ -58,6 +59,27 @@ def ensure_user_columns() -> None:
         db_cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT")
         db_cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name TEXT")
     conn.commit()
+
+
+def get_pets_columns() -> set[str]:
+    global _pets_columns_cache
+
+    if _pets_columns_cache is not None:
+        return _pets_columns_cache
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'pets'
+            """
+        )
+        rows = db_cursor.fetchall()
+
+    _pets_columns_cache = {row[0] for row in rows}
+    return _pets_columns_cache
 
 
 def validate_init_data(init_data: str) -> dict:
@@ -332,11 +354,16 @@ async def api_get_pet(request: web.Request) -> web.Response:
     if user_id is None:
         return web.json_response({"error": "Not found"}, status=404)
 
+    pets_columns = get_pets_columns()
+    select_fields = ["id", "name", "type", "sex", "birth_date", "chip_number"]
+    if "birth_year" in pets_columns:
+        select_fields.append("birth_year")
+
     conn = get_db_connection()
     with conn.cursor() as db_cursor:
         db_cursor.execute(
-            """
-            SELECT id, name, type
+            f"""
+            SELECT {', '.join(select_fields)}
             FROM pets
             WHERE id = %s AND user_id = %s
             """,
@@ -347,8 +374,152 @@ async def api_get_pet(request: web.Request) -> web.Response:
     if pet_row is None:
         return web.json_response({"error": "Not found"}, status=404)
 
-    pet_payload = {"id": pet_row[0], "name": pet_row[1], "type": pet_row[2]}
+    pet_payload = {
+        "id": pet_row[0],
+        "name": pet_row[1],
+        "type": pet_row[2],
+        "sex": pet_row[3],
+        "birth_date": pet_row[4].isoformat() if pet_row[4] else None,
+        "chip_number": pet_row[5],
+        "birth_year": None,
+    }
+
+    if "birth_year" in pets_columns:
+        pet_payload["birth_year"] = pet_row[6]
+
     return web.json_response({"pet": pet_payload})
+
+
+async def api_patch_pet(request: web.Request) -> web.Response:
+    try:
+        tg_user_id = get_tg_user_id_from_header(request)
+    except ValueError as exc:
+        return web.json_response({"error": str(exc)}, status=400)
+
+    pet_id_raw = request.match_info.get("pet_id", "")
+    try:
+        pet_id = int(pet_id_raw)
+    except ValueError:
+        return web.json_response({"error": "pet_id must be an integer"}, status=400)
+
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    if not isinstance(payload, dict):
+        return web.json_response({"error": "JSON body must be an object"}, status=400)
+
+    user_id = get_user_id_by_tg_id(tg_user_id)
+    if user_id is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    pets_columns = get_pets_columns()
+    update_values: dict[str, object] = {}
+
+    if "name" in payload:
+        name = str(payload.get("name", "")).strip()
+        if not name:
+            return web.json_response({"error": "name must be a non-empty string"}, status=400)
+        update_values["name"] = name
+
+    if "sex" in payload:
+        sex = payload.get("sex")
+        if sex not in {"male", "female", "unknown"}:
+            return web.json_response({"error": "sex must be male, female or unknown"}, status=400)
+        update_values["sex"] = sex
+
+    if "chip_number" in payload:
+        chip_number = payload.get("chip_number")
+        if chip_number is None:
+            update_values["chip_number"] = None
+        elif isinstance(chip_number, str):
+            update_values["chip_number"] = chip_number.strip() or None
+        else:
+            return web.json_response({"error": "chip_number must be string or null"}, status=400)
+
+    birth_mode = payload.get("birth_mode") if "birth_mode" in payload else None
+    if birth_mode is not None and birth_mode not in {"date", "year"}:
+        return web.json_response({"error": "birth_mode must be date or year"}, status=400)
+
+    if birth_mode == "date":
+        birth_date = payload.get("birth_date")
+        if not isinstance(birth_date, str):
+            return web.json_response({"error": "birth_date is required for birth_mode=date"}, status=400)
+        try:
+            parsed_birth_date = time.strptime(birth_date, "%Y-%m-%d")
+        except ValueError:
+            return web.json_response({"error": "birth_date must be YYYY-MM-DD"}, status=400)
+        update_values["birth_date"] = time.strftime("%Y-%m-%d", parsed_birth_date)
+        if "birth_year" in pets_columns:
+            update_values["birth_year"] = None
+
+    if birth_mode == "year":
+        birth_year = payload.get("birth_year")
+        if not isinstance(birth_year, int):
+            return web.json_response({"error": "birth_year is required for birth_mode=year"}, status=400)
+        if birth_year < 1900 or birth_year > 2100:
+            return web.json_response({"error": "birth_year must be between 1900 and 2100"}, status=400)
+        if "birth_year" in pets_columns:
+            update_values["birth_year"] = birth_year
+        update_values["birth_date"] = None
+
+    supported_columns = {"name", "sex", "birth_date", "chip_number", "birth_year"}
+    update_values = {key: value for key, value in update_values.items() if key in pets_columns and key in supported_columns}
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute("SELECT 1 FROM pets WHERE id = %s AND user_id = %s", (pet_id, user_id))
+        pet_exists = db_cursor.fetchone()
+
+        if pet_exists is None:
+            return web.json_response({"error": "Not found"}, status=404)
+
+        if update_values:
+            set_clauses = []
+            values = []
+            for idx, (column, value) in enumerate(update_values.items(), start=1):
+                set_clauses.append(f"{column} = %s")
+                values.append(value)
+
+            values.extend([pet_id, user_id])
+            db_cursor.execute(
+                f"""
+                UPDATE pets
+                SET {', '.join(set_clauses)}
+                WHERE id = %s AND user_id = %s
+                """,
+                tuple(values),
+            )
+
+        select_fields = ["id", "name", "type", "sex", "birth_date", "chip_number"]
+        if "birth_year" in pets_columns:
+            select_fields.append("birth_year")
+
+        db_cursor.execute(
+            f"""
+            SELECT {', '.join(select_fields)}
+            FROM pets
+            WHERE id = %s AND user_id = %s
+            """,
+            (pet_id, user_id),
+        )
+        pet_row = db_cursor.fetchone()
+    conn.commit()
+
+    pet_payload = {
+        "id": pet_row[0],
+        "name": pet_row[1],
+        "type": pet_row[2],
+        "sex": pet_row[3],
+        "birth_date": pet_row[4].isoformat() if pet_row[4] else None,
+        "chip_number": pet_row[5],
+        "birth_year": None,
+    }
+    if "birth_year" in pets_columns:
+        pet_payload["birth_year"] = pet_row[6]
+
+    return web.json_response({"ok": True, "pet": pet_payload})
 
 
 async def start_web_server() -> None:
@@ -361,6 +532,7 @@ async def start_web_server() -> None:
     app.router.add_get("/api/pets", api_get_pets)
     app.router.add_post("/api/pets", api_create_pet)
     app.router.add_get("/api/pets/{pet_id}", api_get_pet)
+    app.router.add_patch("/api/pets/{pet_id}", api_patch_pet)
 
     runner = web.AppRunner(app)
     await runner.setup()
