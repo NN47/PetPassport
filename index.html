@@ -13,6 +13,12 @@
       .pet-type{font-size:13px; color:#555;}
       .primary{background:#2b7cff; color:#fff;}
       .muted{color:#666;}
+      .hidden{display:none;}
+      .row{display:flex; gap:8px; margin-top:10px;}
+      .type-btn{background:#eef2ff; color:#1f2a44;}
+      .type-btn.active{background:#2b7cff; color:#fff;}
+      .field{width:100%; box-sizing:border-box; margin-top:10px; padding:10px 12px; border:1px solid #d6dbe7; border-radius:10px;}
+      .error{color:#b42318; margin-top:8px; font-size:14px;}
     </style>
   </head>
   <body>
@@ -20,56 +26,147 @@
       <h2>PetPass 🐶🐱</h2>
       <div id="u" class="muted">Загрузка...</div>
       <div id="pets"></div>
-      <div id="actions"></div>
-      <button onclick="Telegram.WebApp.close()">Закрыть</button>
+
+      <div id="actions" class="row">
+        <button id="toggleFormBtn" class="primary">+ Добавить питомца</button>
+      </div>
+
+      <div id="createPetForm" class="hidden">
+        <input id="petNameInput" class="field" type="text" placeholder="Имя питомца" maxlength="64" />
+        <div class="row">
+          <button id="dogTypeBtn" type="button" class="type-btn active">🐶 Собакен</button>
+          <button id="catTypeBtn" type="button" class="type-btn">🐱 Котофей</button>
+        </div>
+        <div class="row">
+          <button id="savePetBtn" type="button" class="primary">Сохранить</button>
+        </div>
+        <div id="formError" class="error"></div>
+      </div>
+
+      <div class="row">
+        <button onclick="Telegram.WebApp.close()">Закрыть</button>
+      </div>
     </div>
 
     <script>
       const tg = window.Telegram.WebApp;
       tg.ready();
-      const initData = tg.initData;
+
       const user = tg.initDataUnsafe?.user;
+      const tgUserId = user?.id;
 
       const userEl = document.getElementById('u');
       const petsEl = document.getElementById('pets');
-      const actionsEl = document.getElementById('actions');
+      const formEl = document.getElementById('createPetForm');
+      const toggleFormBtn = document.getElementById('toggleFormBtn');
+      const petNameInput = document.getElementById('petNameInput');
+      const savePetBtn = document.getElementById('savePetBtn');
+      const dogTypeBtn = document.getElementById('dogTypeBtn');
+      const catTypeBtn = document.getElementById('catTypeBtn');
+      const formErrorEl = document.getElementById('formError');
 
-      async function bootstrap() {
-        if (!initData || !user) {
-          userEl.innerText = 'Открыто не из Telegram';
+      let selectedType = 'dog';
+
+      function setType(type) {
+        selectedType = type;
+        dogTypeBtn.classList.toggle('active', type === 'dog');
+        catTypeBtn.classList.toggle('active', type === 'cat');
+      }
+
+      function renderPets(pets) {
+        if (!pets.length) {
+          petsEl.innerHTML = '<p class="muted">Питомцев пока нет.</p>';
           return;
         }
 
+        petsEl.innerHTML = pets
+          .map((pet) => (
+            `<div class="pet-card"><strong>${pet.name}</strong><div class="pet-type">${pet.type}</div></div>`
+          ))
+          .join('');
+      }
+
+      function getApiHeaders() {
+        return {
+          'Content-Type': 'application/json',
+          'X-TG-USER-ID': String(tgUserId),
+        };
+      }
+
+      async function loadPets() {
+        const response = await fetch('/api/pets', {
+          method: 'GET',
+          headers: getApiHeaders(),
+        });
+
+        if (!response.ok) {
+          throw new Error('Не удалось получить список питомцев');
+        }
+
+        const data = await response.json();
+        const pets = Array.isArray(data.pets) ? data.pets : [];
+        renderPets(pets);
+      }
+
+      function toggleForm() {
+        formErrorEl.innerText = '';
+        formEl.classList.toggle('hidden');
+      }
+
+      async function savePet() {
+        formErrorEl.innerText = '';
+        const name = petNameInput.value.trim();
+
+        if (!name) {
+          formErrorEl.innerText = 'Введите имя питомца';
+          return;
+        }
+
+        savePetBtn.disabled = true;
         try {
-          const response = await fetch('/api/auth', {
+          const response = await fetch('/api/pets', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ initData }),
+            headers: getApiHeaders(),
+            body: JSON.stringify({ name, type: selectedType }),
           });
 
           if (!response.ok) {
-            userEl.innerText = 'Ошибка авторизации Mini App';
-            return;
+            throw new Error('Не удалось сохранить питомца');
           }
 
-          const data = await response.json();
-          const firstName = data.user?.first_name || user.first_name || 'друг';
-          userEl.innerText = `Привет, ${firstName}!`;
-
-          const pets = Array.isArray(data.pets) ? data.pets : [];
-          if (!pets.length) {
-            petsEl.innerHTML = '<p class="muted">Питомцев пока нет.</p>';
-            actionsEl.innerHTML = '<button class="primary">+ Добавить питомца</button>';
-            return;
-          }
-
-          petsEl.innerHTML = pets.map((pet) => (
-            `<div class="pet-card"><strong>${pet.name}</strong><div class="pet-type">${pet.type}</div></div>`
-          )).join('');
+          formEl.classList.add('hidden');
+          petNameInput.value = '';
+          setType('dog');
+          await loadPets();
         } catch (error) {
-          userEl.innerText = 'Сервер недоступен. Попробуйте позже.';
+          formErrorEl.innerText = 'Ошибка сохранения. Попробуйте еще раз.';
+        } finally {
+          savePetBtn.disabled = false;
         }
       }
+
+      async function bootstrap() {
+        if (!tgUserId) {
+          userEl.innerText = 'Открыто не из Telegram';
+          renderPets([]);
+          return;
+        }
+
+        const firstName = user?.first_name || 'друг';
+        userEl.innerText = `Привет, ${firstName}!`;
+
+        try {
+          await loadPets();
+        } catch (error) {
+          userEl.innerText = 'Сервер недоступен. Попробуйте позже.';
+          renderPets([]);
+        }
+      }
+
+      toggleFormBtn.addEventListener('click', toggleForm);
+      dogTypeBtn.addEventListener('click', () => setType('dog'));
+      catTypeBtn.addEventListener('click', () => setType('cat'));
+      savePetBtn.addEventListener('click', savePet);
 
       bootstrap();
     </script>

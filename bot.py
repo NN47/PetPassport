@@ -128,6 +128,38 @@ def upsert_user_and_get_pets(user_data: dict) -> tuple[dict, list[dict]]:
     return user_payload, pets_payload
 
 
+def ensure_user_by_tg_id(tg_user_id: int, username: str | None = None) -> int:
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            INSERT INTO users (tg_user_id, username)
+            VALUES (%s, %s)
+            ON CONFLICT (tg_user_id)
+            DO UPDATE SET username = COALESCE(EXCLUDED.username, users.username)
+            RETURNING id
+            """,
+            (tg_user_id, username),
+        )
+        user_row = db_cursor.fetchone()
+    conn.commit()
+    return user_row[0]
+
+
+def get_tg_user_id_from_header(request: web.Request) -> int:
+    raw_tg_user_id = request.headers.get("X-TG-USER-ID", "").strip()
+    if not raw_tg_user_id:
+        raise ValueError("X-TG-USER-ID header is required")
+
+    try:
+        tg_user_id = int(raw_tg_user_id)
+    except ValueError as exc:
+        raise ValueError("X-TG-USER-ID must be an integer") from exc
+
+    if tg_user_id <= 0:
+        raise ValueError("X-TG-USER-ID must be positive")
+    return tg_user_id
+
+
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
     tg_id = message.from_user.id
@@ -197,6 +229,66 @@ async def pets_handler(request: web.Request) -> web.Response:
     return web.json_response({"pets": pets})
 
 
+async def api_get_pets(request: web.Request) -> web.Response:
+    try:
+        tg_user_id = get_tg_user_id_from_header(request)
+    except ValueError as exc:
+        return web.json_response({"error": str(exc)}, status=400)
+
+    user_id = ensure_user_by_tg_id(tg_user_id)
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            SELECT id, name, type
+            FROM pets
+            WHERE user_id = %s
+            ORDER BY created_at DESC
+            """,
+            (user_id,),
+        )
+        pet_rows = db_cursor.fetchall()
+
+    pets_payload = [{"id": row[0], "name": row[1], "type": row[2]} for row in pet_rows]
+    return web.json_response({"pets": pets_payload})
+
+
+async def api_create_pet(request: web.Request) -> web.Response:
+    try:
+        tg_user_id = get_tg_user_id_from_header(request)
+    except ValueError as exc:
+        return web.json_response({"error": str(exc)}, status=400)
+
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    name = str(payload.get("name", "")).strip()
+    pet_type = str(payload.get("type", "")).strip().lower()
+
+    if not name:
+        return web.json_response({"error": "name is required"}, status=400)
+    if pet_type not in {"dog", "cat"}:
+        return web.json_response({"error": "type must be dog or cat"}, status=400)
+
+    user_id = ensure_user_by_tg_id(tg_user_id)
+
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            INSERT INTO pets (user_id, name, type)
+            VALUES (%s, %s, %s)
+            RETURNING id, name, type
+            """,
+            (user_id, name, pet_type),
+        )
+        pet_row = db_cursor.fetchone()
+    conn.commit()
+
+    pet_payload = {"id": pet_row[0], "name": pet_row[1], "type": pet_row[2]}
+    return web.json_response({"ok": True, "pet": pet_payload})
+
+
 async def start_web_server() -> None:
     ensure_user_columns()
 
@@ -204,7 +296,8 @@ async def start_web_server() -> None:
     app.router.add_get("/", lambda request: web.FileResponse("index.html"))
     app.router.add_get("/health", health)
     app.router.add_post("/api/auth", auth_handler)
-    app.router.add_get("/api/pets", pets_handler)
+    app.router.add_get("/api/pets", api_get_pets)
+    app.router.add_post("/api/pets", api_create_pet)
 
     runner = web.AppRunner(app)
     await runner.setup()
