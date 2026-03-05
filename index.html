@@ -603,8 +603,7 @@
           <div class="pet-head">
             <div class="route-header"><button class="back-btn" id="backToListBtn">← Назад</button></div>
             <div class="row" style="margin-top:0;">
-              <button class="icon-btn" id="editPetBtn" type="button">✎ Редактировать</button>
-              <button class="icon-btn" id="deletePetBtn" type="button">🗑 Удалить</button>
+              <button class="icon-btn" id="editPetBtn" type="button">⚙️ Настройки</button>
             </div>
           </div>
           <div class="pet-hero ${heroClass}">
@@ -634,18 +633,6 @@
 
         document.getElementById('backToListBtn').addEventListener('click', () => setHash('#list'));
         document.getElementById('editPetBtn').addEventListener('click', () => setHash(`#pet/${pet.id}/info`));
-        document.getElementById('deletePetBtn').addEventListener('click', async () => {
-          const confirmed = await showDeleteConfirm('Удалить питомца? Все данные будут удалены.');
-          if (!confirmed) return;
-
-          try {
-            await deletePet(pet.id);
-            await loadPets();
-            setHash('#list');
-          } catch (error) {
-            window.alert(error.message || 'Ошибка удаления. Попробуйте позже.');
-          }
-        });
 
         screenPetEl.querySelectorAll('[data-section]').forEach((btn) => {
           btn.addEventListener('click', () => {
@@ -2095,6 +2082,7 @@
 
           <div class="row">
             <button id="saveInfoBtn" type="button" class="primary">Сохранить</button>
+            <button id="deleteProfileBtn" type="button" class="icon-btn danger-btn">🗑 Удалить профиль питомца</button>
           </div>
           <div id="infoStatus" class="status hidden"></div>
         `;
@@ -2103,6 +2091,18 @@
         document.getElementById('birthModeDate').addEventListener('change', () => toggleBirthMode('date'));
         document.getElementById('birthModeYear').addEventListener('change', () => toggleBirthMode('year'));
         document.getElementById('saveInfoBtn').addEventListener('click', () => savePetInfo(petId));
+        document.getElementById('deleteProfileBtn').addEventListener('click', async () => {
+          const confirmed = await showDeleteConfirm('Удалить питомца? Все данные будут удалены.');
+          if (!confirmed) return;
+
+          try {
+            await deletePet(petId);
+            await loadPets();
+            setHash('#list');
+          } catch (error) {
+            setInfoStatus('error', error.message || 'Ошибка удаления. Попробуйте позже.');
+          }
+        });
 
         try {
           const pet = await fetchPet(petId);
