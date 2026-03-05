@@ -21,7 +21,7 @@
         --shadow: 0 10px 30px rgba(0, 0, 0, .06);
       }
       body { background: var(--bg); color: var(--text); margin: 0; font-family: system-ui, sans-serif; }
-      .card { border-radius: calc(var(--radius) + 2px); padding: 16px 16px 92px; background: transparent; max-width: 520px; margin: 0 auto; box-sizing: border-box; }
+      .card { border-radius: calc(var(--radius) + 2px); padding: 16px 16px 84px; background: transparent; max-width: 520px; margin: 0 auto; box-sizing: border-box; }
       button { padding: 12px 14px; border-radius: 12px; border: 1px solid transparent; cursor: pointer; }
       .pet-card { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-top: 10px; cursor: pointer; background: var(--card-bg); }
       .pet-type { font-size: 13px; color: var(--hint); }
@@ -96,7 +96,7 @@
         bottom: 0;
         z-index: 20;
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 8px;
         min-height: 68px;
         padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
@@ -156,38 +156,11 @@
 
       <div id="screenPet" class="hidden"></div>
       <div id="screenSection" class="hidden"></div>
-      <div id="screenSettings" class="hidden">
-        <h3>Настройки напоминаний</h3>
-
-        <label class="settings-row">
-          <input id="settingsRemindersEnabled" type="checkbox" />
-          <span>Напоминания</span>
-        </label>
-
-        <label class="label" for="settingsRemindDays">За сколько дней напоминать</label>
-        <select id="settingsRemindDays" class="field">
-          <option value="1">1 день</option>
-          <option value="3">3 дня</option>
-          <option value="7">7 дней</option>
-          <option value="14">14 дней</option>
-        </select>
-
-        <label class="label" for="settingsRemindTime">Время напоминания</label>
-        <input id="settingsRemindTime" class="field" type="time" />
-
-        <div class="row">
-          <button id="saveSettingsBtn" type="button" class="primary">Сохранить</button>
-        </div>
-
-        <div id="settingsStatus" class="status hidden"></div>
-      </div>
-
     </div>
 
     <div id="bottomBar" class="bottom-bar">
       <button data-go="#list">Питомцы</button>
       <button data-go="#add" class="primary">+ Добавить</button>
-      <button data-go="#settings">Настройки</button>
     </div>
 
     <script>
@@ -227,12 +200,6 @@
       const screenAddEl = document.getElementById('screenAdd');
       const screenPetEl = document.getElementById('screenPet');
       const screenSectionEl = document.getElementById('screenSection');
-      const screenSettingsEl = document.getElementById('screenSettings');
-      const settingsRemindersEnabledEl = document.getElementById('settingsRemindersEnabled');
-      const settingsRemindDaysEl = document.getElementById('settingsRemindDays');
-      const settingsRemindTimeEl = document.getElementById('settingsRemindTime');
-      const saveSettingsBtn = document.getElementById('saveSettingsBtn');
-      const settingsStatusEl = document.getElementById('settingsStatus');
       const bottomBarEl = document.getElementById('bottomBar');
 
       const typeLabel = { dog: '🐶 Собакен', cat: '🐱 Котофей' };
@@ -341,7 +308,6 @@
         screenAddEl.classList.toggle('hidden', screen !== 'add');
         screenPetEl.classList.toggle('hidden', screen !== 'pet');
         screenSectionEl.classList.toggle('hidden', screen !== 'section');
-        screenSettingsEl.classList.toggle('hidden', screen !== 'settings');
       }
 
       function updateBottomBar(route, isPetRoute) {
@@ -350,88 +316,6 @@
           const target = btn.getAttribute('data-go');
           btn.classList.toggle('active', !isPetRoute && target === `#${route}`);
         });
-      }
-
-      function setSettingsStatus(type, text) {
-        settingsStatusEl.classList.remove('hidden', 'success', 'error');
-        settingsStatusEl.classList.add(type === 'success' ? 'success' : 'error');
-        settingsStatusEl.textContent = text;
-      }
-
-      function clearSettingsStatus() {
-        settingsStatusEl.textContent = '';
-        settingsStatusEl.classList.add('hidden');
-        settingsStatusEl.classList.remove('success', 'error');
-      }
-
-      async function fetchSettings() {
-        const response = await fetch('/api/settings', {
-          method: 'GET',
-          headers: getApiHeaders(),
-        });
-
-        if (!response.ok) {
-          throw new Error('Не удалось загрузить настройки');
-        }
-
-        return response.json();
-      }
-
-      async function patchSettings(payload) {
-        const response = await fetch('/api/settings', {
-          method: 'PATCH',
-          headers: getApiHeaders(),
-          body: JSON.stringify(payload),
-        });
-
-        if (!response.ok) {
-          const errorPayload = await response.json().catch(() => ({}));
-          throw new Error(errorPayload.error || 'Не удалось сохранить настройки');
-        }
-
-        return response.json();
-      }
-
-      async function renderSettingsScreen() {
-        clearSettingsStatus();
-        settingsRemindersEnabledEl.disabled = true;
-        settingsRemindDaysEl.disabled = true;
-        settingsRemindTimeEl.disabled = true;
-        saveSettingsBtn.disabled = true;
-
-        try {
-          const settings = await fetchSettings();
-          settingsRemindersEnabledEl.checked = Boolean(settings.reminders_enabled);
-          settingsRemindDaysEl.value = String(settings.remind_days || 3);
-          settingsRemindTimeEl.value = settings.remind_time || '09:00';
-        } catch (error) {
-          setSettingsStatus('error', error.message || 'Не удалось загрузить настройки.');
-        } finally {
-          settingsRemindersEnabledEl.disabled = false;
-          settingsRemindDaysEl.disabled = false;
-          settingsRemindTimeEl.disabled = false;
-          saveSettingsBtn.disabled = false;
-        }
-      }
-
-      async function saveSettings() {
-        clearSettingsStatus();
-        saveSettingsBtn.disabled = true;
-
-        try {
-          const remindTime = settingsRemindTimeEl.value || '09:00';
-          await patchSettings({
-            reminders_enabled: settingsRemindersEnabledEl.checked,
-            remind_days: Number(settingsRemindDaysEl.value),
-            remind_time: remindTime,
-          });
-          setSettingsStatus('success', 'Сохранено ✅');
-          window.setTimeout(clearSettingsStatus, 1500);
-        } catch (error) {
-          setSettingsStatus('error', error.message || 'Ошибка сохранения.');
-        } finally {
-          saveSettingsBtn.disabled = false;
-        }
       }
 
       function setHash(nextHash) {
@@ -2183,12 +2067,6 @@
           return;
         }
 
-        if (route === 'settings') {
-          showScreen('settings');
-          await renderSettingsScreen();
-          return;
-        }
-
         if (!petRouteMatch) {
           setHash('#list');
           return;
@@ -2248,7 +2126,6 @@
       dogTypeBtn.addEventListener('click', () => setType('dog'));
       catTypeBtn.addEventListener('click', () => setType('cat'));
       savePetBtn.addEventListener('click', savePet);
-      saveSettingsBtn.addEventListener('click', saveSettings);
       window.addEventListener('hashchange', renderRoute);
 
       bootstrap();
