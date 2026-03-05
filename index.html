@@ -113,13 +113,47 @@
         bottom: 0;
         z-index: 20;
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 8px;
         min-height: 68px;
         padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
         background: var(--card);
         box-shadow: 0 -5px 20px rgba(0, 0, 0, .08);
         box-sizing: border-box;
+      }
+      .bottom-main-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        font-weight: 600;
+      }
+      .bottom-main-btn.plus {
+        background: var(--btn);
+        color: var(--btnText);
+        border-color: transparent;
+      }
+      .bottom-main-btn:disabled {
+        opacity: .45;
+        cursor: not-allowed;
+      }
+      .quick-add-menu {
+        position: fixed;
+        left: 12px;
+        right: 12px;
+        bottom: calc(84px + env(safe-area-inset-bottom));
+        z-index: 25;
+        padding: 12px;
+        border-radius: 14px;
+        background: var(--card);
+        box-shadow: var(--shadow);
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+      .quick-add-menu button {
+        background: color-mix(in srgb, var(--btn) 9%, var(--card));
+        color: var(--text);
       }
       .bottom-bar button {
         background: transparent;
@@ -175,9 +209,12 @@
     </div>
 
     <div id="bottomBar" class="bottom-bar">
-      <button data-go="#list">Питомцы</button>
-      <button data-go="#add" class="primary">+ Добавить</button>
+      <button id="navBackBtn" class="bottom-main-btn" type="button">← Назад</button>
+      <button id="navAddBtn" class="bottom-main-btn plus" type="button">＋</button>
+      <button id="navCalendarBtn" class="bottom-main-btn" type="button">📅</button>
     </div>
+
+    <div id="quickAddMenu" class="quick-add-menu hidden"></div>
 
     <script>
       const tg = window.Telegram.WebApp;
@@ -217,6 +254,10 @@
       const screenPetEl = document.getElementById('screenPet');
       const screenSectionEl = document.getElementById('screenSection');
       const bottomBarEl = document.getElementById('bottomBar');
+      const navBackBtn = document.getElementById('navBackBtn');
+      const navAddBtn = document.getElementById('navAddBtn');
+      const navCalendarBtn = document.getElementById('navCalendarBtn');
+      const quickAddMenuEl = document.getElementById('quickAddMenu');
 
       const typeLabel = { dog: '🐶 Собакен', cat: '🐱 Котофей' };
       const sexLabel = { male: 'Самец', female: 'Самка', unknown: 'Неизвестно' };
@@ -229,7 +270,15 @@
         walk: 'Прогулка',
         walks: 'Прогулка',
         events: 'События',
+        calendar: 'Календарь',
       };
+      const quickAddSections = [
+        { section: 'vaccinations', label: '💉 Вакцинация' },
+        { section: 'treatments', label: '🧴 Обработка' },
+        { section: 'weights', label: '⚖️ Вес' },
+        { section: 'walks', label: '🐾 Прогулка' },
+        { section: 'events', label: '🗂️ Событие' },
+      ];
       const typeImage = { dog: '/assets/dog.png', cat: '/assets/cat.png' };
 
       let selectedType = 'dog';
@@ -328,11 +377,40 @@
       }
 
       function updateBottomBar(route, isPetRoute) {
-        bottomBarEl.classList.toggle('hidden', isPetRoute);
-        bottomBarEl.querySelectorAll('button[data-go]').forEach((btn) => {
-          const target = btn.getAttribute('data-go');
-          btn.classList.toggle('active', !isPetRoute && target === `#${route}`);
-        });
+        const petRouteMatch = route.match(/^pet\/(\d+)(?:\/(.+))?$/);
+        const petId = petRouteMatch ? petRouteMatch[1] : null;
+
+        navAddBtn.disabled = !petId;
+        navCalendarBtn.disabled = !petId;
+        navCalendarBtn.classList.toggle('active', Boolean(petRouteMatch && petRouteMatch[2] === 'calendar'));
+        navBackBtn.classList.toggle('active', false);
+
+        if (!isPetRoute && route === 'list') {
+          navBackBtn.disabled = true;
+        } else {
+          navBackBtn.disabled = false;
+        }
+      }
+
+      function getCurrentPetRoute() {
+        const route = (window.location.hash || '#list').replace(/^#/, '');
+        const petRouteMatch = route.match(/^pet\/(\d+)(?:\/(.+))?$/);
+        if (!petRouteMatch) return null;
+        return { petId: petRouteMatch[1], section: petRouteMatch[2] || '' };
+      }
+
+      function closeQuickAddMenu() {
+        quickAddMenuEl.classList.add('hidden');
+        quickAddMenuEl.innerHTML = '';
+      }
+
+      function openQuickAddMenu() {
+        const petRoute = getCurrentPetRoute();
+        if (!petRoute) return;
+        quickAddMenuEl.innerHTML = quickAddSections
+          .map((item) => `<button type="button" data-add-section="${item.section}">${item.label}</button>`)
+          .join('');
+        quickAddMenuEl.classList.remove('hidden');
       }
 
       function setHash(nextHash) {
@@ -622,6 +700,11 @@
 
         if (section === 'events') {
           renderEventsScreen(petId);
+          return;
+        }
+
+        if (section === 'calendar') {
+          renderCalendarScreen(petId);
           return;
         }
 
@@ -1670,6 +1753,57 @@
         return Array.isArray(data.events) ? data.events : [];
       }
 
+      async function renderCalendarScreen(petId) {
+        screenSectionEl.innerHTML = `
+          <div class="route-header"><button class="back-btn" id="backToProfileBtn" type="button">← Назад в профиль</button><span class="route-title">Календарь</span></div>
+          <div id="calendarStatus" class="status hidden"></div>
+          <div id="calendarList" class="summary-card"><div class="muted">Загрузка календаря...</div></div>
+        `;
+
+        document.getElementById('backToProfileBtn').addEventListener('click', () => setHash(`#pet/${petId}`));
+
+        const listEl = document.getElementById('calendarList');
+        const statusEl = document.getElementById('calendarStatus');
+
+        try {
+          const [vaccinations, fleas, worms, weights, walks, events] = await Promise.all([
+            fetchVaccinations(petId),
+            fetchTreatments(petId, 'fleas'),
+            fetchTreatments(petId, 'worms'),
+            fetchWeights(petId),
+            fetchWalks(petId),
+            fetchEvents(petId),
+          ]);
+
+          const records = [
+            ...vaccinations.map((item) => ({ date: item.date_given, title: `💉 ${item.vaccine_name || 'Вакцинация'}` })),
+            ...fleas.map((item) => ({ date: item.date_given, title: `🧴 ${item.product_name || 'Обработка от блох'}` })),
+            ...worms.map((item) => ({ date: item.date_given, title: `🧴 ${item.product_name || 'Обработка от глистов'}` })),
+            ...weights.map((item) => ({ date: item.measured_at, title: `⚖️ Вес ${Number(item.weight).toFixed(1)} кг` })),
+            ...walks.map((item) => ({ date: item.started_at, title: `🐾 Прогулка ${item.duration_min} мин` })),
+            ...events.map((item) => ({ date: item.event_date, title: `🗂️ ${item.title || 'Событие'}` })),
+          ]
+            .filter((item) => item.date)
+            .map((item) => ({ ...item, ts: new Date(item.date).getTime() }))
+            .filter((item) => Number.isFinite(item.ts))
+            .sort((a, b) => b.ts - a.ts);
+
+          if (!records.length) {
+            listEl.innerHTML = '<div class="muted">Пока нет записей для календаря.</div>';
+            return;
+          }
+
+          listEl.innerHTML = records
+            .map((item) => `<div class="summary-row"><span class="summary-label">${item.title}</span><span class="summary-value">${formatDateTimeShort(item.date)}</span></div>`)
+            .join('');
+        } catch (error) {
+          statusEl.className = 'status error';
+          statusEl.innerText = 'Не удалось загрузить календарь.';
+          statusEl.classList.remove('hidden');
+          listEl.innerHTML = '<div class="muted">Попробуйте позже.</div>';
+        }
+      }
+
       async function createEvent(petId, payload) {
         const response = await fetch(`/api/pets/${petId}/events`, {
           method: 'POST',
@@ -2179,13 +2313,55 @@
         }
       }
 
-      bottomBarEl.querySelectorAll('button[data-go]').forEach((btn) => {
-        btn.addEventListener('click', () => setHash(btn.getAttribute('data-go')));
+      navBackBtn.addEventListener('click', () => {
+        closeQuickAddMenu();
+        const petRoute = getCurrentPetRoute();
+        if (petRoute?.section) {
+          setHash(`#pet/${petRoute.petId}`);
+          return;
+        }
+        if (petRoute) {
+          setHash('#list');
+          return;
+        }
+        if ((window.location.hash || '#list') === '#add') {
+          setHash('#list');
+        }
+      });
+      navAddBtn.addEventListener('click', () => {
+        if (quickAddMenuEl.classList.contains('hidden')) {
+          openQuickAddMenu();
+          return;
+        }
+        closeQuickAddMenu();
+      });
+      navCalendarBtn.addEventListener('click', () => {
+        closeQuickAddMenu();
+        const petRoute = getCurrentPetRoute();
+        if (!petRoute) return;
+        setHash(`#pet/${petRoute.petId}/calendar`);
+      });
+      quickAddMenuEl.addEventListener('click', (event) => {
+        const btn = event.target.closest('[data-add-section]');
+        if (!btn) return;
+        const petRoute = getCurrentPetRoute();
+        if (!petRoute) return;
+        const section = btn.getAttribute('data-add-section');
+        closeQuickAddMenu();
+        setHash(`#pet/${petRoute.petId}/${section}`);
+      });
+      document.addEventListener('click', (event) => {
+        if (quickAddMenuEl.classList.contains('hidden')) return;
+        if (event.target.closest('#quickAddMenu') || event.target.closest('#navAddBtn')) return;
+        closeQuickAddMenu();
       });
       dogTypeBtn.addEventListener('click', () => setType('dog'));
       catTypeBtn.addEventListener('click', () => setType('cat'));
       savePetBtn.addEventListener('click', savePet);
-      window.addEventListener('hashchange', renderRoute);
+      window.addEventListener('hashchange', () => {
+        closeQuickAddMenu();
+        renderRoute();
+      });
 
       bootstrap();
     </script>
