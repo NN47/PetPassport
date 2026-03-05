@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import time
+from collections import defaultdict
 from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import parse_qsl
@@ -46,6 +47,8 @@ _pets_columns_cache: set[str] | None = None
 _weights_columns_cache: set[str] | None = None
 _walks_columns_cache: set[str] | None = None
 _events_columns_cache: set[str] | None = None
+_vaccinations_due_column_cache: str | None = None
+_treatments_due_column_cache: str | None = None
 
 
 def get_db_connection():
@@ -66,6 +69,219 @@ def ensure_user_columns() -> None:
         db_cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT")
         db_cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name TEXT")
     conn.commit()
+
+
+def ensure_notification_log_table() -> None:
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS notification_log (
+              id SERIAL PRIMARY KEY,
+              tg_user_id BIGINT NOT NULL,
+              kind TEXT NOT NULL,
+              ref_id INTEGER NOT NULL,
+              due_date DATE NOT NULL,
+              sent_date DATE NOT NULL,
+              created_at TIMESTAMPTZ DEFAULT NOW(),
+              UNIQUE (tg_user_id, kind, ref_id, due_date, sent_date)
+            )
+            """
+        )
+    conn.commit()
+
+
+def get_due_column(table_name: str) -> str:
+    global _vaccinations_due_column_cache
+    global _treatments_due_column_cache
+
+    if table_name == "vaccinations" and _vaccinations_due_column_cache is not None:
+        return _vaccinations_due_column_cache
+    if table_name == "treatments" and _treatments_due_column_cache is not None:
+        return _treatments_due_column_cache
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = %s
+              AND column_name IN ('next_due_date', 'next_due')
+            ORDER BY CASE column_name WHEN 'next_due_date' THEN 0 ELSE 1 END
+            LIMIT 1
+            """,
+            (table_name,),
+        )
+        row = db_cursor.fetchone()
+
+    if row is None:
+        raise RuntimeError(f"{table_name} table is missing next_due/next_due_date column")
+
+    due_column = row[0]
+    if table_name == "vaccinations":
+        _vaccinations_due_column_cache = due_column
+    elif table_name == "treatments":
+        _treatments_due_column_cache = due_column
+
+    return due_column
+
+
+def reminder_due_label(due_date: date, today: date) -> str:
+    delta = (due_date - today).days
+    if delta < 0:
+        return "ПРОСРОЧЕНО"
+    if delta == 0:
+        return "сегодня"
+    if delta == 1:
+        return "завтра"
+    if delta == 2:
+        return "через 2 дня"
+    return "через 3 дня"
+
+
+def reminder_icon_and_title(kind: str) -> tuple[str, str]:
+    if kind == "vaccination":
+        return "💉", "Вакцина"
+    if kind == "treatment_fleas":
+        return "🧼", "Блохи"
+    if kind == "treatment_worms":
+        return "🧼", "Глисты"
+    return "🔔", "Напоминание"
+
+
+def build_reminder_message(per_pet_items: dict[str, list[dict]], today: date) -> str:
+    lines = ["🐾 PetPass — напоминания", ""]
+    for pet_name in sorted(per_pet_items.keys(), key=str.lower):
+        lines.append(f"🐶 {pet_name}:")
+        items = sorted(per_pet_items[pet_name], key=lambda item: (item["due_date"], item["kind"], item["ref_id"]))
+        for item in items:
+            icon, title = reminder_icon_and_title(item["kind"])
+            due = item["due_date"]
+            label = reminder_due_label(due, today)
+            if label == "ПРОСРОЧЕНО":
+                due_text = f"ПРОСРОЧЕНО ({due.isoformat()})"
+            else:
+                due_text = f"{label} ({due.isoformat()})"
+            lines.append(f"  {icon} {title}: {item['item_name']} — {due_text}")
+        lines.append("")
+
+    return "\n".join(lines).strip()
+
+
+async def check_and_send_reminders(bot_instance: Bot) -> None:
+    conn = get_db_connection()
+    today = date.today()
+    grouped: dict[int, dict[str, list[dict]]] = defaultdict(lambda: defaultdict(list))
+
+    with conn.cursor() as db_cursor:
+        ensure_notification_log_table()
+        vaccination_due_column = get_due_column("vaccinations")
+        treatments_due_column = get_due_column("treatments")
+
+        db_cursor.execute(
+            f"""
+            SELECT u.tg_user_id, p.name, v.id, v.vaccine_name, v.{vaccination_due_column}::date AS due_date
+            FROM users u
+            JOIN pets p ON p.user_id = u.id
+            JOIN vaccinations v ON v.pet_id = p.id
+            WHERE v.{vaccination_due_column} IS NOT NULL
+              AND v.{vaccination_due_column}::date <= (CURRENT_DATE + 3)
+            ORDER BY u.tg_user_id, p.name, v.{vaccination_due_column}::date, v.id
+            """
+        )
+        vaccination_rows = db_cursor.fetchall()
+
+        for tg_user_id, pet_name, ref_id, vaccine_name, due_date in vaccination_rows:
+            db_cursor.execute(
+                """
+                INSERT INTO notification_log (tg_user_id, kind, ref_id, due_date, sent_date)
+                VALUES (%s, %s, %s, %s, CURRENT_DATE)
+                ON CONFLICT DO NOTHING
+                RETURNING id
+                """,
+                (tg_user_id, "vaccination", ref_id, due_date),
+            )
+            inserted = db_cursor.fetchone()
+            if inserted is None:
+                continue
+
+            grouped[tg_user_id][pet_name].append(
+                {
+                    "kind": "vaccination",
+                    "ref_id": ref_id,
+                    "due_date": due_date,
+                    "item_name": vaccine_name,
+                }
+            )
+
+        db_cursor.execute(
+            f"""
+            SELECT
+                u.tg_user_id,
+                p.name,
+                t.id,
+                t.product_name,
+                t.type,
+                t.{treatments_due_column}::date AS due_date,
+                CASE
+                    WHEN t.type = 'fleas' THEN 'treatment_fleas'
+                    WHEN t.type = 'worms' THEN 'treatment_worms'
+                END AS kind
+            FROM users u
+            JOIN pets p ON p.user_id = u.id
+            JOIN treatments t ON t.pet_id = p.id
+            WHERE t.{treatments_due_column} IS NOT NULL
+              AND t.{treatments_due_column}::date <= (CURRENT_DATE + 3)
+              AND t.type IN ('fleas', 'worms')
+            ORDER BY u.tg_user_id, p.name, t.{treatments_due_column}::date, t.id
+            """
+        )
+        treatment_rows = db_cursor.fetchall()
+
+        for tg_user_id, pet_name, ref_id, product_name, treatment_type, due_date, kind in treatment_rows:
+            db_cursor.execute(
+                """
+                INSERT INTO notification_log (tg_user_id, kind, ref_id, due_date, sent_date)
+                VALUES (%s, %s, %s, %s, CURRENT_DATE)
+                ON CONFLICT DO NOTHING
+                RETURNING id
+                """,
+                (tg_user_id, kind, ref_id, due_date),
+            )
+            inserted = db_cursor.fetchone()
+            if inserted is None:
+                continue
+
+            grouped[tg_user_id][pet_name].append(
+                {
+                    "kind": kind,
+                    "ref_id": ref_id,
+                    "due_date": due_date,
+                    "item_name": product_name,
+                    "treatment_type": treatment_type,
+                }
+            )
+
+    conn.commit()
+
+    for tg_user_id, per_pet_items in grouped.items():
+        message_text = build_reminder_message(per_pet_items, today)
+        try:
+            await bot_instance.send_message(chat_id=tg_user_id, text=message_text)
+            print(f"Reminders sent to {tg_user_id}: {sum(len(items) for items in per_pet_items.values())} items")
+        except Exception as exc:
+            print(f"Failed to send reminders to {tg_user_id}: {exc}")
+
+
+async def reminder_loop(bot_instance: Bot) -> None:
+    await asyncio.sleep(15)
+    while True:
+        try:
+            await check_and_send_reminders(bot_instance)
+        except Exception as exc:
+            print("reminder_loop error:", exc)
+        await asyncio.sleep(24 * 60 * 60)
 
 
 def get_pets_columns() -> set[str]:
@@ -1561,6 +1777,7 @@ async def api_create_pet_treatment(request: web.Request) -> web.Response:
 
 async def start_web_server() -> None:
     ensure_user_columns()
+    ensure_notification_log_table()
 
     app = web.Application()
     app.router.add_get("/", lambda request: web.FileResponse("index.html"))
@@ -1598,6 +1815,7 @@ async def start_web_server() -> None:
 async def main():
     print("Starting...")
     await start_web_server()         # запускаем HTTP “ok”
+    asyncio.create_task(reminder_loop(bot))
     print("Bot started")
     await dp.start_polling(bot)      # polling
 
