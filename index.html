@@ -6,39 +6,42 @@
     <title>PetPass</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-      body { font-family: system-ui, sans-serif; margin: 0; background: #f6f7fb; }
-      .card { border: 1px solid #ddd; border-radius: 16px; padding: 16px; background: white; max-width: 540px; margin: 16px auto; }
-      button { padding: 12px 14px; border-radius: 12px; border: 0; cursor: pointer; }
-      .pet-card { border: 1px solid #ececec; border-radius: 12px; padding: 12px; margin-top: 10px; cursor: pointer; }
-      .pet-type { font-size: 13px; color: #555; }
-      .primary { background: #2b7cff; color: #fff; }
-      .muted { color: #666; }
+      :root { --bg: #f6f7fb; --text: #111827; --hint: #6b7280; --btn: #2b7cff; --btn-text: #ffffff; --secondary-bg: #eef2ff; --card-bg: #ffffff; --border: #d6dbe7; }
+      body { font-family: system-ui, sans-serif; margin: 0; background: var(--bg); color: var(--text); }
+      .card { border: 1px solid var(--border); border-radius: 16px; padding: 16px; background: var(--card-bg); max-width: 540px; margin: 16px auto; }
+      button { padding: 12px 14px; border-radius: 12px; border: 1px solid transparent; cursor: pointer; }
+      .pet-card { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-top: 10px; cursor: pointer; background: var(--card-bg); }
+      .pet-type { font-size: 13px; color: var(--hint); }
+      .primary { background: var(--btn); color: var(--btn-text); }
+      .muted { color: var(--hint); }
       .hidden { display: none; }
       .row { display: flex; gap: 8px; margin-top: 10px; }
-      .type-btn { background: #eef2ff; color: #1f2a44; }
-      .type-btn.active { background: #2b7cff; color: #fff; }
-      .field { width: 100%; box-sizing: border-box; margin-top: 10px; padding: 10px 12px; border: 1px solid #d6dbe7; border-radius: 10px; }
+      .type-btn { background: var(--secondary-bg); color: var(--text); }
+      .type-btn.active { background: var(--btn); color: var(--btn-text); }
+      .field { width: 100%; box-sizing: border-box; margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card-bg); color: var(--text); }
       .error { color: #b42318; margin-top: 8px; font-size: 14px; }
-      .back-btn { background: #eef2ff; color: #1f2a44; }
+      .back-btn { background: var(--secondary-bg); color: var(--text); }
       .pet-banner { border-radius: 14px; padding: 18px; font-size: 42px; text-align: center; margin: 10px 0 16px; }
-      .pet-banner.dog { background: #e7f0ff; }
-      .pet-banner.cat { background: #ffeede; }
+      .pet-banner.dog { background: color-mix(in srgb, var(--btn) 12%, var(--card-bg)); }
+      .pet-banner.cat { background: color-mix(in srgb, #ffbe7d 24%, var(--card-bg)); }
       .pet-name { font-size: 28px; font-weight: 700; margin: 0 0 16px; }
       .tile-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-      .tile { border: 1px solid #dbe1f0; background: #f8faff; color: #1f2a44; text-align: left; min-height: 64px; }
+      .tile { border: 1px solid var(--border); background: var(--secondary-bg); color: var(--text); text-align: left; min-height: 64px; }
       .subtiles { margin-top: 8px; display: flex; gap: 8px; }
-      .subtile { background: #eef2ff; color: #1f2a44; flex: 1; }
+      .subtile { background: var(--secondary-bg); color: var(--text); flex: 1; border: 1px solid var(--border); }
       .status { margin-top: 10px; padding: 10px 12px; border-radius: 10px; font-size: 14px; }
       .status.success { background: #e8f8ef; color: #0f5132; border: 1px solid #b7ebcc; }
       .status.error { background: #fdecec; color: #842029; border: 1px solid #f5c2c7; }
-      .label { display: block; margin-top: 10px; margin-bottom: 4px; font-size: 14px; color: #374151; }
+      .label { display: block; margin-top: 10px; margin-bottom: 4px; font-size: 14px; color: var(--text); }
       .birth-mode { display: flex; gap: 10px; margin-top: 8px; }
       .birth-mode label { display: flex; align-items: center; gap: 6px; font-size: 14px; }
-      .summary-card { border: 1px solid #e4e8f5; border-radius: 12px; background: #f9fbff; padding: 12px; margin-bottom: 14px; }
+      .summary-card { border: 1px solid var(--border); border-radius: 12px; background: var(--secondary-bg); padding: 12px; margin-bottom: 14px; }
       .summary-title { font-weight: 700; margin-bottom: 8px; }
       .summary-row { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; font-size: 14px; }
-      .summary-label { color: #4b5563; }
-      .summary-value { color: #111827; text-align: right; }
+      .summary-label { color: var(--hint); }
+      .summary-value { color: var(--text); text-align: right; }
+      .pet-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+      .icon-btn { background: var(--secondary-bg); color: var(--text); padding: 8px 10px; font-size: 14px; }
     </style>
   </head>
   <body>
@@ -77,6 +80,24 @@
     <script>
       const tg = window.Telegram.WebApp;
       tg.ready();
+      tg.expand();
+
+      function applyTelegramTheme() {
+        const theme = tg.themeParams || {};
+        const root = document.documentElement;
+        if (theme.bg_color) root.style.setProperty('--bg', theme.bg_color);
+        if (theme.text_color) root.style.setProperty('--text', theme.text_color);
+        if (theme.hint_color) root.style.setProperty('--hint', theme.hint_color);
+        if (theme.button_color) root.style.setProperty('--btn', theme.button_color);
+        if (theme.button_text_color) root.style.setProperty('--btn-text', theme.button_text_color);
+        if (theme.secondary_bg_color) {
+          root.style.setProperty('--secondary-bg', theme.secondary_bg_color);
+          root.style.setProperty('--card-bg', theme.secondary_bg_color);
+        }
+      }
+
+      applyTelegramTheme();
+      tg.onEvent('themeChanged', applyTelegramTheme);
 
       const user = tg.initDataUnsafe?.user;
       const tgInitData = tg.initData || '';
@@ -254,6 +275,30 @@
         return response.json();
       }
 
+      function showDeleteConfirm(message) {
+        return new Promise((resolve) => {
+          if (typeof tg.showConfirm === 'function') {
+            tg.showConfirm(message, (confirmed) => resolve(Boolean(confirmed)));
+            return;
+          }
+          resolve(window.confirm(message));
+        });
+      }
+
+      async function deletePet(petId) {
+        const response = await fetch(`/api/pets/${petId}`, {
+          method: 'DELETE',
+          headers: getApiHeaders(),
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error || 'Не удалось удалить питомца');
+        }
+
+        return response.json();
+      }
+
       function buildSummaryRows(summary) {
         const weight = summary.latest_weight
           ? `${Number(summary.latest_weight.weight).toFixed(1)} кг · ${formatDateShort(summary.latest_weight.date)}`
@@ -293,7 +338,13 @@
           .join('');
 
         screenPetEl.innerHTML = `
-          <div class="row"><button class="back-btn" id="backToListBtn">← Назад</button></div>
+          <div class="pet-head">
+            <button class="back-btn" id="backToListBtn">← Назад</button>
+            <div class="row" style="margin-top:0;">
+              <button class="icon-btn" id="editPetBtn" type="button">✎ Редактировать</button>
+              <button class="icon-btn" id="deletePetBtn" type="button">🗑 Удалить</button>
+            </div>
+          </div>
           <div class="pet-banner ${bannerClass}">${petEmoji}</div>
           <h3 class="pet-name">${pet.name}</h3>
 
@@ -319,6 +370,20 @@
         `;
 
         document.getElementById('backToListBtn').addEventListener('click', () => setHash('#list'));
+        document.getElementById('editPetBtn').addEventListener('click', () => setHash(`#pet/${pet.id}/info`));
+        document.getElementById('deletePetBtn').addEventListener('click', async () => {
+          const confirmed = await showDeleteConfirm('Удалить питомца? Все данные будут удалены.');
+          if (!confirmed) return;
+
+          try {
+            await deletePet(pet.id);
+            await loadPets();
+            setHash('#list');
+          } catch (error) {
+            window.alert(error.message || 'Ошибка удаления. Попробуйте позже.');
+          }
+        });
+
         screenPetEl.querySelectorAll('[data-section]').forEach((btn) => {
           btn.addEventListener('click', () => {
             const section = btn.getAttribute('data-section');
@@ -1589,6 +1654,7 @@
             return;
           }
 
+          const pet = petSummary.pet;
           document.getElementById('infoNameInput').value = pet.name || '';
           document.getElementById('infoSexSelect').value = pet.sex || 'unknown';
           document.getElementById('infoChipInput').value = pet.chip_number || '';

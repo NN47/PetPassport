@@ -842,6 +842,41 @@ async def api_patch_pet(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "pet": pet_payload})
 
 
+async def api_delete_pet(request: web.Request) -> web.Response:
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
+
+    pet_id_raw = request.match_info.get("pet_id", "")
+    try:
+        pet_id = int(pet_id_raw)
+    except ValueError:
+        return web.json_response({"error": "pet_id must be an integer"}, status=400)
+
+    user_id = get_user_id_by_tg_id(tg_user_id)
+    if user_id is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            DELETE FROM pets
+            WHERE id = %s AND user_id = %s
+            RETURNING id
+            """,
+            (pet_id, user_id),
+        )
+        deleted_row = db_cursor.fetchone()
+    conn.commit()
+
+    if deleted_row is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    return web.json_response({"ok": True})
+
+
 async def api_get_pet_vaccinations(request: web.Request) -> web.Response:
     auth_context = get_tg_user_id(request)
     if auth_context is None:
@@ -1533,6 +1568,7 @@ async def start_web_server() -> None:
     app.router.add_get("/api/pets/{pet_id}", api_get_pet)
     app.router.add_get("/api/pets/{pet_id}/summary", api_get_pet_summary)
     app.router.add_patch("/api/pets/{pet_id}", api_patch_pet)
+    app.router.add_delete("/api/pets/{pet_id}", api_delete_pet)
     app.router.add_get("/api/pets/{pet_id}/vaccinations", api_get_pet_vaccinations)
     app.router.add_post("/api/pets/{pet_id}/vaccinations", api_create_pet_vaccination)
     app.router.add_get("/api/pets/{pet_id}/weights", api_get_pet_weights)
