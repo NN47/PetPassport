@@ -645,9 +645,32 @@
         console.log('pet(full)', pet);
         const heroClass = pet.type === 'cat' ? 'cat' : 'dog';
         const bannerImage = typeImage[pet.type] || typeImage.dog;
-        const birthValue = pet.birth_date
-          ? formatDateRu(pet.birth_date)
-          : (pet.birth_year ? String(pet.birth_year) : '');
+        function getPetAgeValue(currentPet) {
+          const now = new Date();
+
+          if (currentPet.birth_date) {
+            const birthDate = new Date(`${currentPet.birth_date}T00:00:00`);
+            if (Number.isNaN(birthDate.getTime()) || birthDate > now) return '';
+
+            let years = now.getFullYear() - birthDate.getFullYear();
+            const monthDelta = now.getMonth() - birthDate.getMonth();
+            const dayDelta = now.getDate() - birthDate.getDate();
+            if (monthDelta < 0 || (monthDelta === 0 && dayDelta < 0)) {
+              years -= 1;
+            }
+            return years < 1 ? 'до 1 года' : `${years} г.`;
+          }
+
+          if (currentPet.birth_year) {
+            const years = now.getFullYear() - Number(currentPet.birth_year);
+            if (Number.isNaN(years) || years < 0) return '';
+            return years < 1 ? 'до 1 года' : `${years} г.`;
+          }
+
+          return '';
+        }
+
+        const ageValue = getPetAgeValue(pet);
         function isEmpty(v) {
           if (v === null || v === undefined) return true;
           const normalized = String(v).trim().toLowerCase();
@@ -658,7 +681,7 @@
           const empty = isEmpty(value);
           const fallback = {
             'Пол': 'не указан',
-            'Рождение': 'не указано',
+            'Возраст': 'не указан',
             'Чип': 'не указан',
           };
 
@@ -677,7 +700,7 @@
         const chips = [
           chip('Тип', typeLabel[pet.type] || pet.type, ''),
           chip('Пол', sexLabel[pet.sex] || pet.sex, '⚥'),
-          chip('Рождение', birthValue, '📅'),
+          chip('Возраст', ageValue, '🎂'),
           chip('Чип', pet.chip_number, '🏷️'),
         ];
 
