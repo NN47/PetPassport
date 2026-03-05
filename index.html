@@ -113,7 +113,7 @@
         bottom: 0;
         z-index: 20;
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 8px;
         min-height: 68px;
         padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
@@ -125,20 +125,69 @@
         background: transparent;
         color: var(--text);
         border: 1px solid var(--border);
-        border-top: 2px solid transparent;
         border-radius: 12px;
-        font-size: 14px;
+        font-size: 22px;
+        line-height: 1;
+        display: grid;
+        place-items: center;
       }
       .bottom-bar button.active {
         color: var(--btn);
-        border-top-color: var(--btn);
         background: color-mix(in srgb, var(--btn) 10%, var(--card));
+        border-color: color-mix(in srgb, var(--btn) 36%, var(--border));
       }
       .bottom-bar button.primary {
         background: var(--btn);
         color: var(--btnText);
         border-color: transparent;
-        border-top-color: transparent;
+        font-weight: 600;
+      }
+      .quick-add-menu {
+        position: fixed;
+        inset: 0;
+        z-index: 30;
+        background: rgba(0, 0, 0, .35);
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+      }
+      .quick-add-sheet {
+        width: min(520px, 100%);
+        background: var(--card);
+        border-radius: 18px 18px 0 0;
+        padding: 14px;
+        box-sizing: border-box;
+      }
+      .quick-add-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .quick-add-grid button {
+        font-size: 14px;
+        text-align: left;
+      }
+      .calendar-grid {
+        margin-top: 12px;
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 6px;
+      }
+      .calendar-day {
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        min-height: 34px;
+        font-size: 12px;
+        display: grid;
+        place-items: center;
+        background: var(--card-bg);
+      }
+      .calendar-day.muted { opacity: .45; }
+      .calendar-day.marked {
+        background: color-mix(in srgb, var(--btn) 18%, var(--card));
+        border-color: color-mix(in srgb, var(--btn) 50%, var(--border));
+        color: var(--text);
         font-weight: 600;
       }
       @media (max-width: 460px) {
@@ -175,8 +224,9 @@
     </div>
 
     <div id="bottomBar" class="bottom-bar">
-      <button data-go="#list">Питомцы</button>
-      <button data-go="#add" class="primary">+ Добавить</button>
+      <button id="bottomBackBtn" type="button" title="Назад">←</button>
+      <button id="bottomQuickAddBtn" type="button" class="primary" title="Добавить">＋</button>
+      <button id="bottomCalendarBtn" type="button" title="Календарь">🗓️</button>
     </div>
 
     <script>
@@ -217,6 +267,9 @@
       const screenPetEl = document.getElementById('screenPet');
       const screenSectionEl = document.getElementById('screenSection');
       const bottomBarEl = document.getElementById('bottomBar');
+      const bottomBackBtn = document.getElementById('bottomBackBtn');
+      const bottomQuickAddBtn = document.getElementById('bottomQuickAddBtn');
+      const bottomCalendarBtn = document.getElementById('bottomCalendarBtn');
 
       const typeLabel = { dog: '🐶 Собакен', cat: '🐱 Котофей' };
       const sexLabel = { male: 'Самец', female: 'Самка', unknown: 'Неизвестно' };
@@ -229,12 +282,14 @@
         walk: 'Прогулка',
         walks: 'Прогулка',
         events: 'События',
+        calendar: 'Календарь',
       };
       const typeImage = { dog: '/assets/dog.png', cat: '/assets/cat.png' };
 
       let selectedType = 'dog';
       let infoStatusTimer = null;
       let activeWalkTimer = null;
+      let currentPetRouteId = null;
 
       function formatDateRu(isoDate) {
         if (!isoDate) return '';
@@ -326,12 +381,14 @@
         screenSectionEl.classList.toggle('hidden', screen !== 'section');
       }
 
-      function updateBottomBar(route, isPetRoute) {
-        bottomBarEl.classList.toggle('hidden', isPetRoute);
-        bottomBarEl.querySelectorAll('button[data-go]').forEach((btn) => {
-          const target = btn.getAttribute('data-go');
-          btn.classList.toggle('active', !isPetRoute && target === `#${route}`);
-        });
+      function updateBottomBar(route, petId) {
+        currentPetRouteId = petId || null;
+        bottomBarEl.classList.remove('hidden');
+        bottomBackBtn.classList.toggle('active', route === 'list');
+        bottomCalendarBtn.classList.toggle('active', route.includes('/calendar'));
+        const disabled = !currentPetRouteId;
+        bottomQuickAddBtn.disabled = disabled;
+        bottomCalendarBtn.disabled = disabled;
       }
 
       function setHash(nextHash) {
@@ -340,6 +397,49 @@
           return;
         }
         window.location.hash = nextHash;
+      }
+
+      function closeQuickAddMenu() {
+        const menu = document.getElementById('quickAddMenu');
+        if (menu) menu.remove();
+      }
+
+      function openQuickAddMenu() {
+        if (!currentPetRouteId) return;
+        closeQuickAddMenu();
+        const menu = document.createElement('div');
+        menu.id = 'quickAddMenu';
+        menu.className = 'quick-add-menu';
+        menu.innerHTML = `
+          <div class="quick-add-sheet">
+            <strong>Добавить запись</strong>
+            <div class="quick-add-grid">
+              <button type="button" data-section="vaccinations">💉 Вакцинация</button>
+              <button type="button" data-section="treatments">🧴 Обработка</button>
+              <button type="button" data-section="weights">⚖️ Вес</button>
+              <button type="button" data-section="walks">🐾 Прогулка</button>
+              <button type="button" data-section="events">🗂️ Событие</button>
+              <button type="button" data-section="info">⚙️ Информация</button>
+            </div>
+            <div class="row"><button id="closeQuickAddBtn" type="button">Отмена</button></div>
+          </div>
+        `;
+
+        menu.addEventListener('click', (event) => {
+          if (event.target === menu) closeQuickAddMenu();
+        });
+
+        document.body.appendChild(menu);
+
+        menu.querySelectorAll('[data-section]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const section = btn.getAttribute('data-section');
+            closeQuickAddMenu();
+            setHash(`#pet/${currentPetRouteId}/${section}`);
+          });
+        });
+
+        document.getElementById('closeQuickAddBtn').addEventListener('click', closeQuickAddMenu);
       }
 
       function renderPets(pets) {
@@ -434,6 +534,98 @@
         }
 
         return response.json();
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#039;');
+      }
+
+      function dateKey(rawDate) {
+        if (!rawDate) return null;
+        const value = String(rawDate);
+        return value.includes('T') ? value.split('T')[0] : value;
+      }
+
+      function buildCalendarGrid(markedDates, baseDate = new Date()) {
+        const year = baseDate.getFullYear();
+        const month = baseDate.getMonth();
+        const firstDay = new Date(year, month, 1);
+        const offset = (firstDay.getDay() + 6) % 7;
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const monthLabel = firstDay.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+        const cells = [];
+
+        for (let i = 0; i < offset; i += 1) {
+          cells.push('<div class="calendar-day muted"></div>');
+        }
+
+        for (let day = 1; day <= daysInMonth; day += 1) {
+          const dateIso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          const classes = ['calendar-day'];
+          if (markedDates.has(dateIso)) classes.push('marked');
+          cells.push(`<div class="${classes.join(' ')}">${day}</div>`);
+        }
+
+        return { monthLabel: monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1), cellsHtml: cells.join('') };
+      }
+
+      async function fetchCalendarEntries(petId) {
+        const [vaccinations, fleas, worms, weights, walks, events] = await Promise.all([
+          fetchVaccinations(petId).catch(() => []),
+          fetchTreatments(petId, 'fleas').catch(() => []),
+          fetchTreatments(petId, 'worms').catch(() => []),
+          fetchWeights(petId).catch(() => []),
+          fetchWalks(petId).catch(() => []),
+          fetchEvents(petId).catch(() => []),
+        ]);
+
+        return [
+          ...vaccinations.map((item) => ({ date: dateKey(item.date_given), text: `💉 Вакцина: ${item.vaccine_name}` })),
+          ...fleas.map((item) => ({ date: dateKey(item.date_given), text: `🦟 Обработка: ${item.product_name}` })),
+          ...worms.map((item) => ({ date: dateKey(item.date_given), text: `🪱 Обработка: ${item.product_name}` })),
+          ...weights.map((item) => ({ date: dateKey(item.date), text: `⚖️ Вес: ${Number(item.weight).toFixed(1)} кг` })),
+          ...walks.map((item) => ({ date: dateKey(item.started_at), text: `🐾 Прогулка: ${formatDateTimeShort(item.started_at)}` })),
+          ...events.map((item) => ({ date: dateKey(item.event_date), text: `🗂️ Событие: ${item.title}` })),
+        ].filter((item) => item.date);
+      }
+
+      async function renderCalendarScreen(petId) {
+        const entries = await fetchCalendarEntries(petId);
+        const grouped = entries.reduce((acc, item) => {
+          if (!acc[item.date]) acc[item.date] = [];
+          acc[item.date].push(item.text);
+          return acc;
+        }, {});
+
+        const markedDates = new Set(Object.keys(grouped));
+        const calendar = buildCalendarGrid(markedDates);
+        const timeline = Object.keys(grouped)
+          .sort((a, b) => (a < b ? 1 : -1))
+          .map((date) => `
+            <div class="pet-card">
+              <strong>${formatDateRu(date)}</strong>
+              ${grouped[date].map((row) => `<div class="muted">${escapeHtml(row)}</div>`).join('')}
+            </div>
+          `)
+          .join('');
+
+        screenSectionEl.innerHTML = `
+          <div class="row"><button class="back-btn" id="backToProfileBtn">← Назад</button></div>
+          <h3>Календарь</h3>
+          <div class="summary-card">
+            <div class="summary-title">${calendar.monthLabel}</div>
+            <div class="calendar-grid">${calendar.cellsHtml}</div>
+          </div>
+          <h3 style="margin-top:14px;">Отмеченные записи</h3>
+          <div id="calendarTimeline">${timeline || '<p class="muted">Пока нет записей.</p>'}</div>
+        `;
+
+        document.getElementById('backToProfileBtn').addEventListener('click', () => setHash(`#pet/${petId}`));
       }
 
       function buildSummaryRows(summary) {
@@ -608,6 +800,11 @@
 
         if (section === 'events') {
           renderEventsScreen(petId);
+          return;
+        }
+
+        if (section === 'calendar') {
+          renderCalendarScreen(petId);
           return;
         }
 
@@ -2079,6 +2276,7 @@
       }
 
       async function renderRoute() {
+        closeQuickAddMenu();
         if (!tgInitData) {
           showScreen('list');
           return;
@@ -2088,7 +2286,7 @@
         const route = hash.replace(/^#/, '');
 
         const petRouteMatch = route.match(/^pet\/(\d+)(?:\/(.+))?$/);
-        updateBottomBar(route, Boolean(petRouteMatch));
+        updateBottomBar(route, petRouteMatch ? petRouteMatch[1] : null);
 
         if (route === 'list') {
           showScreen('list');
@@ -2153,8 +2351,19 @@
         }
       }
 
-      bottomBarEl.querySelectorAll('button[data-go]').forEach((btn) => {
-        btn.addEventListener('click', () => setHash(btn.getAttribute('data-go')));
+      bottomBackBtn.addEventListener('click', () => {
+        closeQuickAddMenu();
+        if (window.location.hash === '#list') {
+          setHash('#add');
+          return;
+        }
+        setHash('#list');
+      });
+      bottomQuickAddBtn.addEventListener('click', openQuickAddMenu);
+      bottomCalendarBtn.addEventListener('click', () => {
+        if (!currentPetRouteId) return;
+        closeQuickAddMenu();
+        setHash(`#pet/${currentPetRouteId}/calendar`);
       });
       dogTypeBtn.addEventListener('click', () => setType('dog'));
       catTypeBtn.addEventListener('click', () => setType('cat'));
