@@ -576,9 +576,6 @@
           .join('');
 
         screenPetEl.innerHTML = `
-          <div class="pet-head">
-            <div class="route-header"><button class="back-btn" id="backToListBtn">← Назад</button></div>
-          </div>
           <div class="pet-hero ${heroClass}">
             <button class="pet-hero-menu" id="editPetBtn" type="button">⚙️ Настройки</button>
             <div class="pet-avatar-wrap"><img src="${bannerImage}" class="pet-avatar" alt="${pet.type}" /></div>
@@ -601,7 +598,6 @@
           </div>
         `;
 
-        document.getElementById('backToListBtn').addEventListener('click', () => setHash('#list'));
         document.getElementById('editPetBtn').addEventListener('click', () => setHash(`#pet/${pet.id}/info`));
 
         screenPetEl.querySelectorAll('[data-section]').forEach((btn) => {
