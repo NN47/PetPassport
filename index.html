@@ -54,6 +54,12 @@
       .pet-hero { min-height: 160px; border-radius: var(--radius); background: linear-gradient(160deg, color-mix(in srgb, var(--btn) 22%, var(--card)) 0%, var(--card) 100%); box-shadow: var(--shadow); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; position: relative; text-align: center; margin-bottom: var(--gap); }
       .pet-hero.cat { background: linear-gradient(160deg, color-mix(in srgb, #ffbe7d 38%, var(--card)) 0%, var(--card) 100%); }
       .pet-hero-menu { position: absolute; right: 12px; top: 12px; width: 32px; height: 32px; padding: 0; border-radius: 50%; background: color-mix(in srgb, var(--card) 92%, transparent); color: var(--hint); visibility: hidden; }
+      .pet-hero-layout { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 10px; }
+      .pet-hero-facts { display: flex; flex-direction: column; gap: 8px; }
+      .pet-hero-facts.right { text-align: right; }
+      .pet-hero-fact { font-size: 13px; padding: 6px 8px; border-radius: 10px; background: color-mix(in srgb, var(--card) 84%, transparent); border: 1px solid color-mix(in srgb, var(--border) 70%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .pet-hero-fact-label { color: var(--hint); margin-right: 4px; }
+      .pet-hero-fact-value.empty { color: var(--hint); }
       .pet-avatar-wrap { width: 72px; height: 72px; border-radius: 50%; background: var(--card); display: grid; place-items: center; box-shadow: 0 4px 14px rgba(0, 0, 0, .08); }
       .pet-avatar { width: 44px; height: 44px; object-fit: contain; }
       .pet-name { font-size: 28px; font-weight: 700; margin: 10px 0 6px; line-height: 1.1; }
@@ -121,6 +127,11 @@
         border-color: transparent;
         border-top-color: transparent;
         font-weight: 600;
+      }
+      @media (max-width: 460px) {
+        .pet-hero-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .pet-avatar-wrap { grid-column: span 2; margin: 0 auto; }
+        .pet-hero-facts.right { text-align: left; }
       }
     </style>
   </head>
@@ -231,6 +242,7 @@
       const bottomBarEl = document.getElementById('bottomBar');
 
       const typeLabel = { dog: '🐶 Собакен', cat: '🐱 Котофей' };
+      const sexLabel = { male: 'Самец', female: 'Самка', unknown: 'Неизвестно' };
       const sectionLabel = {
         info: 'Информация о питомце',
         vaccinations: 'Вакцинация',
@@ -564,6 +576,22 @@
         const pet = summary.pet;
         const heroClass = pet.type === 'cat' ? 'cat' : 'dog';
         const bannerImage = typeImage[pet.type] || typeImage.dog;
+        const birthValue = pet.birth_date
+          ? formatDateRu(pet.birth_date)
+          : (pet.birth_year ? String(pet.birth_year) : '—');
+        const chipValue = pet.chip_number || '—';
+        const petFactsLeft = [
+          ['Пол', sexLabel[pet.sex] || sexLabel.unknown],
+          ['Рождение', birthValue],
+        ];
+        const petFactsRight = [
+          ['Чип', chipValue],
+          ['Тип', typeLabel[pet.type] || pet.type],
+        ];
+        const renderFact = ([label, value]) => {
+          const valueClass = value === '—' ? 'pet-hero-fact-value empty' : 'pet-hero-fact-value';
+          return `<div class="pet-hero-fact"><span class="pet-hero-fact-label">${label}:</span><span class="${valueClass}">${value}</span></div>`;
+        };
         const summaryRows = buildSummaryRows(summary)
           .map(([icon, label, value]) => {
             const valueClass = value === '—' ? 'summary-value empty' : 'summary-value';
@@ -581,7 +609,11 @@
           </div>
           <div class="pet-hero ${heroClass}">
             <button class="pet-hero-menu" type="button" aria-hidden="true">⋯</button>
-            <div class="pet-avatar-wrap"><img src="${bannerImage}" class="pet-avatar" alt="${pet.type}" /></div>
+            <div class="pet-hero-layout">
+              <div class="pet-hero-facts left">${petFactsLeft.map(renderFact).join('')}</div>
+              <div class="pet-avatar-wrap"><img src="${bannerImage}" class="pet-avatar" alt="${pet.type}" /></div>
+              <div class="pet-hero-facts right">${petFactsRight.map(renderFact).join('')}</div>
+            </div>
             <h3 class="pet-name">${pet.name}</h3>
             <div class="pet-type-badge">${typeLabel[pet.type] || pet.type}</div>
           </div>
