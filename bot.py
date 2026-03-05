@@ -228,40 +228,42 @@ def parse_walk_started_at(raw_started_at: object) -> datetime | None:
     except ValueError:
         return None
 
-def validate_init_data(init_data: str) -> dict:
-    if not init_data:
-        raise ValueError("initData is empty")
+def validate_init_data(init_data: str, bot_token: str, max_age_seconds: int = 86400) -> dict | None:
+    if not init_data or not bot_token:
+        return None
 
-    parsed = dict(parse_qsl(init_data, keep_blank_values=True))
-    received_hash = parsed.pop("hash", None)
-    if not received_hash:
-        raise ValueError("hash is missing")
+    try:
+        parsed_pairs = parse_qsl(init_data, keep_blank_values=True)
+        parsed = dict(parsed_pairs)
+        received_hash = parsed.pop("hash", None)
+        if not received_hash:
+            return None
 
-    auth_date = parsed.get("auth_date")
-    if not auth_date:
-        raise ValueError("auth_date is missing")
+        data_check_string = "\n".join(f"{key}={value}" for key, value in sorted(parsed.items()))
+        secret_key = hmac.new(b"WebAppData", bot_token.encode("utf-8"), hashlib.sha256).digest()
+        computed_hash = hmac.new(secret_key, data_check_string.encode("utf-8"), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(computed_hash, received_hash):
+            return None
 
-    auth_ts = int(auth_date)
-    now_ts = int(time.time())
-    if now_ts - auth_ts > 24 * 60 * 60:
-        raise ValueError("initData is expired")
-    if auth_ts - now_ts > 60:
-        raise ValueError("auth_date is invalid")
+        auth_date_raw = parsed.get("auth_date")
+        auth_ts = int(auth_date_raw)
+        now_ts = int(time.time())
+        if auth_ts > now_ts or now_ts - auth_ts > max_age_seconds:
+            return None
 
-    data_check_string = "\n".join(f"{key}={value}" for key, value in sorted(parsed.items()))
-    secret_key = hmac.new(b"WebAppData", BOT_TOKEN.encode("utf-8"), hashlib.sha256).digest()
-    calc_hash = hmac.new(secret_key, data_check_string.encode("utf-8"), hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(calc_hash, received_hash):
-        raise ValueError("hash is invalid")
+        raw_user = parsed.get("user")
+        if not raw_user:
+            return None
 
-    raw_user = parsed.get("user")
-    if not raw_user:
-        raise ValueError("user is missing")
+        user_payload = json.loads(raw_user)
+        tg_user_id = int(user_payload["id"])
+        if tg_user_id <= 0:
+            return None
 
-    user = json.loads(raw_user)
-    if "id" not in user:
-        raise ValueError("user.id is missing")
-    return user
+        user_payload["tg_user_id"] = tg_user_id
+        return user_payload
+    except (KeyError, ValueError, TypeError, json.JSONDecodeError):
+        return None
 
 
 def upsert_user_and_get_pets(user_data: dict) -> tuple[dict, list[dict]]:
@@ -346,19 +348,12 @@ def get_owned_pet_id(tg_user_id: int, pet_id: int) -> int | None:
     return pet_row[0] if pet_row else None
 
 
-def get_tg_user_id_from_header(request: web.Request) -> int:
-    raw_tg_user_id = request.headers.get("X-TG-USER-ID", "").strip()
-    if not raw_tg_user_id:
-        raise ValueError("X-TG-USER-ID header is required")
-
-    try:
-        tg_user_id = int(raw_tg_user_id)
-    except ValueError as exc:
-        raise ValueError("X-TG-USER-ID must be an integer") from exc
-
-    if tg_user_id <= 0:
-        raise ValueError("X-TG-USER-ID must be positive")
-    return tg_user_id
+def get_tg_user_id(request: web.Request) -> tuple[int, dict] | None:
+    init_data = request.headers.get("X-TG-INIT-DATA", "").strip()
+    validated_user = validate_init_data(init_data, BOT_TOKEN)
+    if validated_user is None:
+        return None
+    return validated_user["tg_user_id"], validated_user
 
 
 @dp.message(Command("start"))
@@ -399,43 +394,30 @@ async def health(request: web.Request) -> web.Response:
 
 
 async def auth_handler(request: web.Request) -> web.Response:
-    try:
-        payload = await request.json()
-    except json.JSONDecodeError:
-        return web.json_response({"error": "Invalid JSON"}, status=400)
-
-    init_data = payload.get("initData")
-    if not isinstance(init_data, str):
-        return web.json_response({"error": "initData is required"}, status=400)
-
-    try:
-        tg_user = validate_init_data(init_data)
-    except (ValueError, json.JSONDecodeError):
-        return web.json_response({"error": "Unauthorized"}, status=401)
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    _, tg_user = auth_context
 
     user, pets = upsert_user_and_get_pets(tg_user)
     return web.json_response({"user": user, "pets": pets})
 
 
 async def pets_handler(request: web.Request) -> web.Response:
-    init_data = request.query.get("initData")
-    if not init_data:
-        return web.json_response({"error": "initData is required"}, status=400)
-
-    try:
-        tg_user = validate_init_data(init_data)
-    except (ValueError, json.JSONDecodeError):
-        return web.json_response({"error": "Unauthorized"}, status=401)
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    _, tg_user = auth_context
 
     _, pets = upsert_user_and_get_pets(tg_user)
     return web.json_response({"pets": pets})
 
 
 async def api_get_pets(request: web.Request) -> web.Response:
-    try:
-        tg_user_id = get_tg_user_id_from_header(request)
-    except ValueError as exc:
-        return web.json_response({"error": str(exc)}, status=400)
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
 
     user_id = get_user_id_by_tg_id(tg_user_id)
     if user_id is None:
@@ -459,10 +441,10 @@ async def api_get_pets(request: web.Request) -> web.Response:
 
 
 async def api_create_pet(request: web.Request) -> web.Response:
-    try:
-        tg_user_id = get_tg_user_id_from_header(request)
-    except ValueError as exc:
-        return web.json_response({"error": str(exc)}, status=400)
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
 
     try:
         payload = await request.json()
@@ -497,10 +479,10 @@ async def api_create_pet(request: web.Request) -> web.Response:
 
 
 async def api_get_pet(request: web.Request) -> web.Response:
-    try:
-        tg_user_id = get_tg_user_id_from_header(request)
-    except ValueError as exc:
-        return web.json_response({"error": str(exc)}, status=400)
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
 
     pet_id_raw = request.match_info.get("pet_id", "")
     try:
@@ -549,10 +531,10 @@ async def api_get_pet(request: web.Request) -> web.Response:
 
 
 async def api_patch_pet(request: web.Request) -> web.Response:
-    try:
-        tg_user_id = get_tg_user_id_from_header(request)
-    except ValueError as exc:
-        return web.json_response({"error": str(exc)}, status=400)
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
 
     pet_id_raw = request.match_info.get("pet_id", "")
     try:
@@ -681,10 +663,10 @@ async def api_patch_pet(request: web.Request) -> web.Response:
 
 
 async def api_get_pet_vaccinations(request: web.Request) -> web.Response:
-    try:
-        tg_user_id = get_tg_user_id_from_header(request)
-    except ValueError as exc:
-        return web.json_response({"error": str(exc)}, status=400)
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
 
     pet_id_raw = request.match_info.get("pet_id", "")
     try:
@@ -723,10 +705,10 @@ async def api_get_pet_vaccinations(request: web.Request) -> web.Response:
 
 
 async def api_create_pet_vaccination(request: web.Request) -> web.Response:
-    try:
-        tg_user_id = get_tg_user_id_from_header(request)
-    except ValueError as exc:
-        return web.json_response({"error": str(exc)}, status=400)
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
 
     pet_id_raw = request.match_info.get("pet_id", "")
     try:
@@ -804,10 +786,10 @@ async def api_create_pet_vaccination(request: web.Request) -> web.Response:
 
 
 async def api_get_pet_weights(request: web.Request) -> web.Response:
-    try:
-        tg_user_id = get_tg_user_id_from_header(request)
-    except ValueError as exc:
-        return web.json_response({"error": str(exc)}, status=400)
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
 
     pet_id_raw = request.match_info.get("pet_id", "")
     try:
@@ -849,10 +831,10 @@ async def api_get_pet_weights(request: web.Request) -> web.Response:
 
 
 async def api_create_pet_weight(request: web.Request) -> web.Response:
-    try:
-        tg_user_id = get_tg_user_id_from_header(request)
-    except ValueError as exc:
-        return web.json_response({"error": str(exc)}, status=400)
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
 
     pet_id_raw = request.match_info.get("pet_id", "")
     try:
@@ -932,10 +914,10 @@ async def api_create_pet_weight(request: web.Request) -> web.Response:
 
 
 async def api_get_pet_walks(request: web.Request) -> web.Response:
-    try:
-        tg_user_id = get_tg_user_id_from_header(request)
-    except ValueError as exc:
-        return web.json_response({"error": str(exc)}, status=400)
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
 
     pet_id_raw = request.match_info.get("pet_id", "")
     try:
@@ -977,10 +959,10 @@ async def api_get_pet_walks(request: web.Request) -> web.Response:
 
 
 async def api_create_pet_walk(request: web.Request) -> web.Response:
-    try:
-        tg_user_id = get_tg_user_id_from_header(request)
-    except ValueError as exc:
-        return web.json_response({"error": str(exc)}, status=400)
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
 
     pet_id_raw = request.match_info.get("pet_id", "")
     try:
@@ -1083,10 +1065,10 @@ def encode_event_type_in_title(event_type: str, title: str) -> str:
 
 
 async def api_get_pet_events(request: web.Request) -> web.Response:
-    try:
-        tg_user_id = get_tg_user_id_from_header(request)
-    except ValueError as exc:
-        return web.json_response({"error": str(exc)}, status=400)
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
 
     pet_id_raw = request.match_info.get("pet_id", "")
     try:
@@ -1130,10 +1112,10 @@ async def api_get_pet_events(request: web.Request) -> web.Response:
 
 
 async def api_create_pet_event(request: web.Request) -> web.Response:
-    try:
-        tg_user_id = get_tg_user_id_from_header(request)
-    except ValueError as exc:
-        return web.json_response({"error": str(exc)}, status=400)
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
 
     pet_id_raw = request.match_info.get("pet_id", "")
     try:
@@ -1227,10 +1209,10 @@ def validate_treatment_type(raw_type: object) -> str | None:
 
 
 async def api_get_pet_treatments(request: web.Request) -> web.Response:
-    try:
-        tg_user_id = get_tg_user_id_from_header(request)
-    except ValueError as exc:
-        return web.json_response({"error": str(exc)}, status=400)
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
 
     pet_id_raw = request.match_info.get("pet_id", "")
     try:
@@ -1274,10 +1256,10 @@ async def api_get_pet_treatments(request: web.Request) -> web.Response:
 
 
 async def api_create_pet_treatment(request: web.Request) -> web.Response:
-    try:
-        tg_user_id = get_tg_user_id_from_header(request)
-    except ValueError as exc:
-        return web.json_response({"error": str(exc)}, status=400)
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
 
     pet_id_raw = request.match_info.get("pet_id", "")
     try:

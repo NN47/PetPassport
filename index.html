@@ -74,7 +74,7 @@
       tg.ready();
 
       const user = tg.initDataUnsafe?.user;
-      const tgUserId = user?.id;
+      const tgInitData = tg.initData || '';
 
       const userEl = document.getElementById('u');
       const petsEl = document.getElementById('pets');
@@ -143,7 +143,7 @@
       function getApiHeaders() {
         return {
           'Content-Type': 'application/json',
-          'X-TG-USER-ID': String(tgUserId),
+          'X-TG-INIT-DATA': tgInitData,
         };
       }
 
@@ -1567,7 +1567,7 @@
       }
 
       async function renderRoute() {
-        if (!tgUserId) {
+        if (!tgInitData) {
           showScreen('list');
           return;
         }
@@ -1611,7 +1611,7 @@
       }
 
       async function bootstrap() {
-        if (!tgUserId) {
+        if (!tgInitData) {
           userEl.innerText = 'Открыто не из Telegram';
           renderPets([]);
           showScreen('list');
