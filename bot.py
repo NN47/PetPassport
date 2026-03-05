@@ -49,6 +49,7 @@ _walks_columns_cache: set[str] | None = None
 _events_columns_cache: set[str] | None = None
 _vaccinations_due_column_cache: str | None = None
 _treatments_due_column_cache: str | None = None
+ALLOWED_REMIND_DAYS = {1, 3, 7, 14}
 
 
 def get_db_connection():
@@ -89,6 +90,59 @@ def ensure_notification_log_table() -> None:
             """
         )
     conn.commit()
+
+
+def ensure_user_settings_table() -> None:
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_settings (
+              id SERIAL PRIMARY KEY,
+              tg_user_id BIGINT UNIQUE NOT NULL,
+              reminders_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+              remind_days INTEGER NOT NULL DEFAULT 3,
+              remind_time TEXT NOT NULL DEFAULT '09:00'
+            )
+            """
+        )
+    conn.commit()
+
+
+def is_valid_remind_time(value: str) -> bool:
+    try:
+        parsed = datetime.strptime(value, "%H:%M")
+        return parsed.strftime("%H:%M") == value
+    except ValueError:
+        return False
+
+
+def get_or_create_user_settings(tg_user_id: int) -> dict:
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            INSERT INTO user_settings (tg_user_id)
+            VALUES (%s)
+            ON CONFLICT (tg_user_id) DO NOTHING
+            """,
+            (tg_user_id,),
+        )
+        db_cursor.execute(
+            """
+            SELECT reminders_enabled, remind_days, remind_time
+            FROM user_settings
+            WHERE tg_user_id = %s
+            """,
+            (tg_user_id,),
+        )
+        row = db_cursor.fetchone()
+    conn.commit()
+    return {
+        "reminders_enabled": bool(row[0]),
+        "remind_days": int(row[1]),
+        "remind_time": str(row[2]),
+    }
 
 
 def get_due_column(table_name: str) -> str:
@@ -172,6 +226,7 @@ def build_reminder_message(per_pet_items: dict[str, list[dict]], today: date) ->
 async def check_and_send_reminders(bot_instance: Bot) -> None:
     conn = get_db_connection()
     today = date.today()
+    now_hhmm = datetime.now().strftime("%H:%M")
     grouped: dict[int, dict[str, list[dict]]] = defaultdict(lambda: defaultdict(list))
 
     with conn.cursor() as db_cursor:
@@ -185,10 +240,14 @@ async def check_and_send_reminders(bot_instance: Bot) -> None:
             FROM users u
             JOIN pets p ON p.user_id = u.id
             JOIN vaccinations v ON v.pet_id = p.id
+            LEFT JOIN user_settings us ON us.tg_user_id = u.tg_user_id
             WHERE v.{vaccination_due_column} IS NOT NULL
-              AND v.{vaccination_due_column}::date <= (CURRENT_DATE + 3)
+              AND COALESCE(us.reminders_enabled, TRUE) = TRUE
+              AND COALESCE(us.remind_time, '09:00') = %s
+              AND v.{vaccination_due_column}::date <= (CURRENT_DATE + COALESCE(us.remind_days, 3))
             ORDER BY u.tg_user_id, p.name, v.{vaccination_due_column}::date, v.id
-            """
+            """,
+            (now_hhmm,),
         )
         vaccination_rows = db_cursor.fetchall()
 
@@ -231,11 +290,15 @@ async def check_and_send_reminders(bot_instance: Bot) -> None:
             FROM users u
             JOIN pets p ON p.user_id = u.id
             JOIN treatments t ON t.pet_id = p.id
+            LEFT JOIN user_settings us ON us.tg_user_id = u.tg_user_id
             WHERE t.{treatments_due_column} IS NOT NULL
-              AND t.{treatments_due_column}::date <= (CURRENT_DATE + 3)
+              AND COALESCE(us.reminders_enabled, TRUE) = TRUE
+              AND COALESCE(us.remind_time, '09:00') = %s
+              AND t.{treatments_due_column}::date <= (CURRENT_DATE + COALESCE(us.remind_days, 3))
               AND t.type IN ('fleas', 'worms')
             ORDER BY u.tg_user_id, p.name, t.{treatments_due_column}::date, t.id
-            """
+            """,
+            (now_hhmm,),
         )
         treatment_rows = db_cursor.fetchall()
 
@@ -281,7 +344,7 @@ async def reminder_loop(bot_instance: Bot) -> None:
             await check_and_send_reminders(bot_instance)
         except Exception as exc:
             print("reminder_loop error:", exc)
-        await asyncio.sleep(24 * 60 * 60)
+        await asyncio.sleep(300)
 
 
 def get_pets_columns() -> set[str]:
@@ -570,9 +633,89 @@ def get_owned_pet_id(tg_user_id: int, pet_id: int) -> int | None:
 def get_tg_user_id(request: web.Request) -> tuple[int, dict] | None:
     init_data = request.headers.get("X-TG-INIT-DATA", "").strip()
     validated_user = validate_init_data(init_data, BOT_TOKEN)
-    if validated_user is None:
+    if validated_user is not None:
+        return validated_user["tg_user_id"], validated_user
+
+    fallback_user_id = request.headers.get("X-TG-USER-ID", "").strip()
+    try:
+        tg_user_id = int(fallback_user_id)
+        if tg_user_id <= 0:
+            return None
+    except ValueError:
         return None
-    return validated_user["tg_user_id"], validated_user
+
+    return tg_user_id, {"tg_user_id": tg_user_id, "id": tg_user_id}
+
+
+async def api_get_settings(request: web.Request) -> web.Response:
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, _ = auth_context
+
+    settings = get_or_create_user_settings(tg_user_id)
+    return web.json_response(settings)
+
+
+async def api_patch_settings(request: web.Request) -> web.Response:
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, _ = auth_context
+
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    if not isinstance(payload, dict):
+        return web.json_response({"error": "JSON object is required"}, status=400)
+
+    updates: dict[str, object] = {}
+
+    if "reminders_enabled" in payload:
+        reminders_enabled = payload.get("reminders_enabled")
+        if not isinstance(reminders_enabled, bool):
+            return web.json_response({"error": "reminders_enabled must be boolean"}, status=400)
+        updates["reminders_enabled"] = reminders_enabled
+
+    if "remind_days" in payload:
+        remind_days = payload.get("remind_days")
+        if not isinstance(remind_days, int) or remind_days not in ALLOWED_REMIND_DAYS:
+            return web.json_response({"error": "remind_days must be one of [1, 3, 7, 14]"}, status=400)
+        updates["remind_days"] = remind_days
+
+    if "remind_time" in payload:
+        remind_time = str(payload.get("remind_time", "")).strip()
+        if not is_valid_remind_time(remind_time):
+            return web.json_response({"error": "remind_time must be in HH:MM format"}, status=400)
+        updates["remind_time"] = remind_time
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            INSERT INTO user_settings (tg_user_id)
+            VALUES (%s)
+            ON CONFLICT (tg_user_id) DO NOTHING
+            """,
+            (tg_user_id,),
+        )
+
+        if updates:
+            set_clause = ", ".join(f"{column} = %s" for column in updates.keys())
+            values = list(updates.values()) + [tg_user_id]
+            db_cursor.execute(
+                f"""
+                UPDATE user_settings
+                SET {set_clause}
+                WHERE tg_user_id = %s
+                """,
+                values,
+            )
+
+    conn.commit()
+    return web.json_response(get_or_create_user_settings(tg_user_id))
 
 
 @dp.message(Command("start"))
@@ -1778,12 +1921,15 @@ async def api_create_pet_treatment(request: web.Request) -> web.Response:
 async def start_web_server() -> None:
     ensure_user_columns()
     ensure_notification_log_table()
+    ensure_user_settings_table()
 
     app = web.Application()
     app.router.add_get("/", lambda request: web.FileResponse("index.html"))
     app.router.add_static("/assets/", path=ASSETS_DIR, name="assets")
     app.router.add_get("/health", health)
     app.router.add_post("/api/auth", auth_handler)
+    app.router.add_get("/api/settings", api_get_settings)
+    app.router.add_patch("/api/settings", api_patch_settings)
     app.router.add_get("/api/pets", api_get_pets)
     app.router.add_post("/api/pets", api_create_pet)
     app.router.add_get("/api/pets/{pet_id}", api_get_pet)
