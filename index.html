@@ -235,6 +235,7 @@
       let selectedType = 'dog';
       let infoStatusTimer = null;
       let activeWalkTimer = null;
+      const petCache = new Map();
 
       function formatDateRu(isoDate) {
         if (!isoDate) return '';
@@ -377,7 +378,14 @@
         renderPets(pets);
       }
 
-      async function fetchPet(petId) {
+      async function api_get_pet(petId, options = {}) {
+        const { force = false } = options;
+        const cacheKey = String(petId);
+
+        if (!force && petCache.has(cacheKey)) {
+          return petCache.get(cacheKey);
+        }
+
         const response = await fetch(`/api/pets/${petId}`, {
           method: 'GET',
           headers: getApiHeaders(),
@@ -392,7 +400,13 @@
         }
 
         const data = await response.json();
-        return data.pet || null;
+        const pet = data.pet || null;
+        if (pet) {
+          petCache.set(cacheKey, pet);
+        } else {
+          petCache.delete(cacheKey);
+        }
+        return pet;
       }
 
       async function fetchPetSummary(petId) {
@@ -466,8 +480,8 @@
         ];
       }
 
-      function renderPetProfile(summary) {
-        const pet = summary.pet;
+      function renderPetProfile(pet, summary) {
+        console.log('pet(full)', pet);
         const heroClass = pet.type === 'cat' ? 'cat' : 'dog';
         const bannerImage = typeImage[pet.type] || typeImage.dog;
         const birthValue = pet.birth_date
@@ -1954,8 +1968,16 @@
             throw new Error(errData.error || 'Не удалось сохранить изменения');
           }
 
+          const responsePayload = await response.json().catch(() => ({}));
+          if (responsePayload.pet) {
+            petCache.set(String(petId), responsePayload.pet);
+          }
+
           setInfoStatus('success', 'Сохранено ✅');
-          setTimeout(() => setHash(`#pet/${petId}`), 800);
+          setTimeout(() => {
+            petCache.delete(String(petId));
+            setHash(`#pet/${petId}`);
+          }, 800);
         } catch (error) {
           setInfoStatus('error', error.message || 'Ошибка сохранения. Попробуйте еще раз.');
         } finally {
@@ -2018,7 +2040,7 @@
         });
 
         try {
-          const pet = await fetchPet(petId);
+          const pet = await api_get_pet(petId);
           if (!pet) {
             setHash('#list');
             return;
@@ -2109,8 +2131,12 @@
         const section = petRouteMatch[2];
 
         try {
-          const petSummary = await fetchPetSummary(petId);
-          if (!petSummary || !petSummary.pet) {
+          const [pet, petSummary] = await Promise.all([
+            api_get_pet(petId, { force: true }),
+            fetchPetSummary(petId),
+          ]);
+
+          if (!pet || !petSummary) {
             setHash('#list');
             return;
           }
@@ -2121,7 +2147,7 @@
             return;
           }
 
-          renderPetProfile(petSummary);
+          renderPetProfile(pet, petSummary);
           showScreen('pet');
         } catch (error) {
           userEl.innerText = 'Не удалось загрузить экран питомца.';
