@@ -2073,13 +2073,12 @@
         document.getElementById('saveInfoBtn').addEventListener('click', () => savePetInfo(petId));
 
         try {
-          const petSummary = await fetchPetSummary(petId);
-          if (!petSummary || !petSummary.pet) {
+          const pet = await fetchPet(petId);
+          if (!pet) {
             setHash('#list');
             return;
           }
 
-          const pet = petSummary.pet;
           document.getElementById('infoNameInput').value = pet.name || '';
           document.getElementById('infoSexSelect').value = pet.sex || 'unknown';
           document.getElementById('infoChipInput').value = pet.chip_number || '';
