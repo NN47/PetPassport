@@ -93,7 +93,7 @@
       const sectionLabel = {
         info: 'Информация о питомце',
         vaccinations: 'Вакцинация',
-        treatment: 'Обработка',
+        treatments: 'Обработка',
         weight: 'Вес',
         walk: 'Прогулка',
         events: 'События',
@@ -204,8 +204,8 @@
             <div>
               <button class="tile" data-section="treatment">Обработка</button>
               <div class="subtiles">
-                <button class="subtile" data-section="treatment-fleas">от блох</button>
-                <button class="subtile" data-section="treatment-worms">от глистов</button>
+                <button class="subtile" data-section="treatments-fleas">от блох</button>
+                <button class="subtile" data-section="treatments-worms">от глистов</button>
               </div>
             </div>
             <button class="tile" data-section="weight">Вес</button>
@@ -236,6 +236,21 @@
 
         if (section === 'vaccinations') {
           renderVaccinationsScreen(petId);
+          return;
+        }
+
+        if (section === 'treatment') {
+          setHash(`#pet/${petId}/treatments`);
+          return;
+        }
+
+        if (section === 'treatments' || section === 'treatments-fleas') {
+          renderTreatmentsScreen(petId, 'fleas');
+          return;
+        }
+
+        if (section === 'treatments-worms') {
+          renderTreatmentsScreen(petId, 'worms');
           return;
         }
 
@@ -433,6 +448,225 @@
           const statusCodeText = error.status ? ` (${error.status})` : '';
           setVaccinationStatus('error', `Ошибка${statusCodeText}: ${error.message || 'не удалось загрузить список вакцинаций.'}`);
           renderVaccinationsList([]);
+        }
+      }
+
+      async function fetchTreatments(petId, treatmentType) {
+        const response = await fetch(`/api/pets/${petId}/treatments?type=${encodeURIComponent(treatmentType)}`, {
+          method: 'GET',
+          headers: getApiHeaders(),
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          const error = new Error(errData.error || 'Не удалось загрузить обработки');
+          error.status = response.status;
+          throw error;
+        }
+
+        const data = await response.json();
+        return Array.isArray(data.treatments) ? data.treatments : [];
+      }
+
+      async function createTreatment(petId, payload) {
+        const response = await fetch(`/api/pets/${petId}/treatments`, {
+          method: 'POST',
+          headers: getApiHeaders(),
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          const error = new Error(errData.error || 'Не удалось сохранить обработку');
+          error.status = response.status;
+          throw error;
+        }
+
+        return response.json();
+      }
+
+      function setTreatmentStatus(type, message) {
+        const statusEl = document.getElementById('treatmentStatus');
+        if (!statusEl) return;
+        statusEl.className = `status ${type}`;
+        statusEl.innerText = message;
+        statusEl.classList.remove('hidden');
+      }
+
+      function hideTreatmentStatus() {
+        const statusEl = document.getElementById('treatmentStatus');
+        if (!statusEl) return;
+        statusEl.classList.add('hidden');
+      }
+
+      function renderTreatmentsList(items) {
+        const listEl = document.getElementById('treatmentsList');
+        if (!listEl) return;
+
+        if (!items.length) {
+          listEl.innerHTML = '<p class="muted">Записей пока нет.</p>';
+          return;
+        }
+
+        listEl.innerHTML = items
+          .map((item) => {
+            const nextDueText = item.next_due
+              ? `<div class="muted">Следующая: ${formatDateRu(item.next_due)}</div>`
+              : '';
+            const notesText = item.notes
+              ? `<div class="muted">Заметка: ${item.notes}</div>`
+              : '';
+
+            return `
+              <div class="pet-card">
+                <strong>${formatDateRu(item.date_given)} — ${item.product_name}</strong>
+                ${nextDueText}
+                ${notesText}
+              </div>
+            `;
+          })
+          .join('');
+      }
+
+      function resetTreatmentForm() {
+        document.getElementById('treatmentProductName').value = '';
+        document.getElementById('treatmentDateGiven').value = '';
+        document.getElementById('treatmentNextDue').value = '';
+        document.getElementById('treatmentNotes').value = '';
+      }
+
+      function toggleTreatmentForm(show) {
+        const formNode = document.getElementById('treatmentForm');
+        const addBtn = document.getElementById('showTreatmentFormBtn');
+        if (!formNode || !addBtn) return;
+        formNode.classList.toggle('hidden', !show);
+        addBtn.classList.toggle('hidden', show);
+      }
+
+      async function renderTreatmentsScreen(petId, initialType = 'fleas') {
+        let currentType = initialType === 'worms' ? 'worms' : 'fleas';
+
+        screenSectionEl.innerHTML = `
+          <div class="row"><button class="back-btn" id="backToProfileBtn">← Назад</button></div>
+          <h3>Обработка</h3>
+
+          <div class="row">
+            <button id="treatmentTabFleas" type="button" class="type-btn">От блох</button>
+            <button id="treatmentTabWorms" type="button" class="type-btn">От глистов</button>
+          </div>
+
+          <div id="treatmentStatus" class="status hidden"></div>
+          <div id="treatmentsList"></div>
+
+          <div class="row">
+            <button id="showTreatmentFormBtn" type="button" class="primary">+ Добавить обработку</button>
+          </div>
+
+          <div id="treatmentForm" class="hidden">
+            <label class="label" for="treatmentProductName">Препарат</label>
+            <input id="treatmentProductName" class="field" type="text" maxlength="128" />
+
+            <label class="label" for="treatmentDateGiven">Дата обработки</label>
+            <input id="treatmentDateGiven" class="field" type="date" />
+
+            <label class="label" for="treatmentNextDue">Следующая обработка (опционально)</label>
+            <input id="treatmentNextDue" class="field" type="date" />
+
+            <label class="label" for="treatmentNotes">Заметка (опционально)</label>
+            <textarea id="treatmentNotes" class="field" rows="3" maxlength="500"></textarea>
+
+            <div class="row">
+              <button id="saveTreatmentBtn" type="button" class="primary">Сохранить</button>
+              <button id="cancelTreatmentBtn" type="button" class="back-btn">Отмена</button>
+            </div>
+          </div>
+        `;
+
+        const tabFleasBtn = document.getElementById('treatmentTabFleas');
+        const tabWormsBtn = document.getElementById('treatmentTabWorms');
+
+        function syncTabs() {
+          tabFleasBtn.classList.toggle('active', currentType === 'fleas');
+          tabWormsBtn.classList.toggle('active', currentType === 'worms');
+        }
+
+        async function refreshTreatments() {
+          const items = await fetchTreatments(petId, currentType);
+          renderTreatmentsList(items);
+        }
+
+        async function switchType(nextType) {
+          currentType = nextType;
+          syncTabs();
+          hideTreatmentStatus();
+          try {
+            await refreshTreatments();
+          } catch (error) {
+            const statusCodeText = error.status ? ` (${error.status})` : '';
+            setTreatmentStatus('error', `Ошибка${statusCodeText}: ${error.message || 'не удалось загрузить список обработок.'}`);
+            renderTreatmentsList([]);
+          }
+        }
+
+        document.getElementById('backToProfileBtn').addEventListener('click', () => setHash(`#pet/${petId}`));
+        document.getElementById('showTreatmentFormBtn').addEventListener('click', () => {
+          hideTreatmentStatus();
+          toggleTreatmentForm(true);
+        });
+        document.getElementById('cancelTreatmentBtn').addEventListener('click', () => {
+          resetTreatmentForm();
+          hideTreatmentStatus();
+          toggleTreatmentForm(false);
+        });
+        tabFleasBtn.addEventListener('click', () => switchType('fleas'));
+        tabWormsBtn.addEventListener('click', () => switchType('worms'));
+
+        document.getElementById('saveTreatmentBtn').addEventListener('click', async () => {
+          const saveBtn = document.getElementById('saveTreatmentBtn');
+          const productName = document.getElementById('treatmentProductName').value.trim();
+          const dateGiven = document.getElementById('treatmentDateGiven').value;
+          const nextDue = document.getElementById('treatmentNextDue').value;
+          const notes = document.getElementById('treatmentNotes').value.trim();
+
+          if (!productName) {
+            setTreatmentStatus('error', 'Укажите препарат.');
+            return;
+          }
+          if (!dateGiven) {
+            setTreatmentStatus('error', 'Укажите дату обработки.');
+            return;
+          }
+
+          const payload = {
+            type: currentType,
+            product_name: productName,
+            date_given: dateGiven,
+            next_due: nextDue || null,
+            notes: notes || null,
+          };
+
+          saveBtn.disabled = true;
+          try {
+            await createTreatment(petId, payload);
+            setTreatmentStatus('success', 'Обработка сохранена ✅');
+            resetTreatmentForm();
+            toggleTreatmentForm(false);
+            await refreshTreatments();
+          } catch (error) {
+            const statusCodeText = error.status ? ` (${error.status})` : '';
+            setTreatmentStatus('error', `Ошибка${statusCodeText}: ${error.message || 'не удалось сохранить запись.'}`);
+          } finally {
+            saveBtn.disabled = false;
+          }
+        });
+
+        syncTabs();
+        try {
+          await refreshTreatments();
+        } catch (error) {
+          const statusCodeText = error.status ? ` (${error.status})` : '';
+          setTreatmentStatus('error', `Ошибка${statusCodeText}: ${error.message || 'не удалось загрузить список обработок.'}`);
+          renderTreatmentsList([]);
         }
       }
 
