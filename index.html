@@ -1914,9 +1914,13 @@
             ...events.map((item) => ({ date: item.event_date, title: `🗂️ ${item.title || 'Событие'}` })),
             ...feedings.map((item) => ({ date: item.fed_at, title: '🍽️ Кормление' })),
           ]
-            .filter((item) => item.date)
-            .map((item) => ({ ...item, ts: new Date(item.date).getTime() }))
-            .filter((item) => Number.isFinite(item.ts))
+            .map((item) => {
+              if (!item.date) return { ...item, hasDate: false, ts: Number.NEGATIVE_INFINITY };
+              const ts = new Date(item.date).getTime();
+              if (!Number.isFinite(ts)) return null;
+              return { ...item, hasDate: true, ts };
+            })
+            .filter(Boolean)
             .sort((a, b) => b.ts - a.ts);
 
           if (!records.length) {
@@ -1925,7 +1929,10 @@
           }
 
           listEl.innerHTML = records
-            .map((item) => `<div class="summary-row"><span class="summary-label">${item.title}</span><span class="summary-value">${formatDateTimeShort(item.date)}</span></div>`)
+            .map((item) => {
+              const dateLabel = item.hasDate ? formatDateTimeShort(item.date) : 'Без даты';
+              return `<div class="summary-row"><span class="summary-label">${item.title}</span><span class="summary-value">${dateLabel}</span></div>`;
+            })
             .join('');
         } catch (error) {
           statusEl.className = 'status error';
