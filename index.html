@@ -685,6 +685,10 @@
             'Чип': 'не указан',
           };
 
+          if (label === 'Чип' && empty) {
+            return null;
+          }
+
           if (label === 'Тип') {
             const typeText = String(value || '').trim();
             return { text: `${icon ? `${icon} ` : ''}${typeText}`.trim(), muted: false };
@@ -705,6 +709,7 @@
         ];
 
         const chipsHtml = chips
+          .filter(Boolean)
           .map(({ text, muted }) => `<span class="chip${muted ? ' muted' : ''}">${text}</span>`)
           .join('');
         const summaryRows = buildSummaryRows(summary)
