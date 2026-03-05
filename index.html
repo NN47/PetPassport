@@ -270,6 +270,7 @@
         walk: 'Прогулка',
         walks: 'Прогулка',
         events: 'События',
+        feedings: 'Питание',
         calendar: 'Календарь',
       };
       const quickAddSections = [
@@ -278,6 +279,7 @@
         { section: 'weights', label: '⚖️ Вес' },
         { section: 'walks', label: '🐾 Прогулка' },
         { section: 'events', label: '🗂️ Событие' },
+        { section: 'feedings', label: '🍽️ Питание' },
       ];
       const typeImage = { dog: '/assets/dog.png', cat: '/assets/cat.png' };
 
@@ -547,6 +549,9 @@
         const event = summary.latest_event
           ? `${summary.latest_event.title} · ${formatDateTimeShort(summary.latest_event.event_date)}`
           : '—';
+        const feeding = summary.latest_feeding
+          ? `${formatDateTimeShort(summary.latest_feeding.fed_at)}`
+          : '—';
 
         return [
           ['⚖️', 'Вес', weight],
@@ -555,6 +560,7 @@
           ['🪱', 'Глисты', worms],
           ['🐾', 'Прогулка', walk],
           ['🗓️', 'Событие', event],
+          ['🍽️', 'Питание', feeding],
         ];
       }
 
@@ -633,6 +639,7 @@
             <button class="action" data-section="weight"><span class="action-emoji">⚖️</span><span class="action-title">Вес</span><span class="action-hint">История и текущий вес</span></button>
             <button class="action" data-section="walks"><span class="action-emoji">🐾</span><span class="action-title">Прогулка</span><span class="action-hint">Таймер и журнал прогулок</span></button>
             <button class="action" data-section="events"><span class="action-emoji">🗂️</span><span class="action-title">События</span><span class="action-hint">Заметки и важные даты</span></button>
+            <button class="action" data-section="feedings"><span class="action-emoji">🍽️</span><span class="action-title">Питание</span><span class="action-hint">Отметки о кормлении</span></button>
           </div>
         `;
 
@@ -700,6 +707,11 @@
 
         if (section === 'events') {
           renderEventsScreen(petId);
+          return;
+        }
+
+        if (section === 'feedings' || section === 'feeding') {
+          renderFeedingsScreen(petId);
           return;
         }
 
@@ -1753,6 +1765,165 @@
         return Array.isArray(data.events) ? data.events : [];
       }
 
+      async function fetchFeedings(petId) {
+        const response = await fetch(`/api/pets/${petId}/feedings`, {
+          method: 'GET',
+          headers: getApiHeaders(),
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          const error = new Error(errData.error || 'Не удалось загрузить питание');
+          error.status = response.status;
+          throw error;
+        }
+
+        const data = await response.json();
+        return Array.isArray(data.feedings) ? data.feedings : [];
+      }
+
+      async function createFeeding(petId, payload = {}) {
+        const response = await fetch(`/api/pets/${petId}/feedings`, {
+          method: 'POST',
+          headers: getApiHeaders(),
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          const error = new Error(errData.error || 'Не удалось отметить кормление');
+          error.status = response.status;
+          throw error;
+        }
+
+        return response.json();
+      }
+
+      async function deleteFeeding(petId, feedingId) {
+        const response = await fetch(`/api/pets/${petId}/feedings/${feedingId}`, {
+          method: 'DELETE',
+          headers: getApiHeaders(),
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          const error = new Error(errData.error || 'Не удалось удалить кормление');
+          error.status = response.status;
+          throw error;
+        }
+      }
+
+      function setFeedingStatus(type, message) {
+        const statusEl = document.getElementById('feedingStatus');
+        if (!statusEl) return;
+        statusEl.className = `status ${type}`;
+        statusEl.innerText = message;
+        statusEl.classList.remove('hidden');
+      }
+
+      function hideFeedingStatus() {
+        const statusEl = document.getElementById('feedingStatus');
+        if (!statusEl) return;
+        statusEl.classList.add('hidden');
+      }
+
+      function renderFeedingsList(feedings) {
+        const listEl = document.getElementById('feedingsList');
+        if (!listEl) return;
+
+        if (!feedings.length) {
+          listEl.innerHTML = '<p class="muted">Отметок по питанию пока нет.</p>';
+          return;
+        }
+
+        listEl.innerHTML = feedings
+          .map((item) => {
+            const notesText = item.notes ? `<div class="muted">Заметка: ${item.notes}</div>` : '';
+            return `
+              <div class="pet-card">
+                <strong>🍽️ ${formatDateTimeRu(item.fed_at)}</strong>
+                ${notesText}
+                <div class="row">
+                  <button class="icon-btn danger-btn" data-delete-feeding-id="${item.id}" type="button">🗑 Удалить</button>
+                </div>
+              </div>
+            `;
+          })
+          .join('');
+      }
+
+      async function renderFeedingsScreen(petId) {
+        screenSectionEl.innerHTML = `
+          <div class="row"><button class="back-btn" id="backToProfileBtn" type="button">← Назад</button></div>
+          <h3>Питание</h3>
+          <div id="feedingStatus" class="status hidden"></div>
+          <div id="feedingsList"></div>
+
+          <label class="label" for="feedingNotes">Заметка (опционально)</label>
+          <textarea id="feedingNotes" class="field" rows="2" maxlength="300" placeholder="Что ел питомец"></textarea>
+
+          <div class="row">
+            <button id="markFeedingBtn" type="button" class="primary">✅ Отметить кормление</button>
+          </div>
+        `;
+
+        document.getElementById('backToProfileBtn').addEventListener('click', () => setHash(`#pet/${petId}`));
+
+        const refreshFeedings = async () => {
+          const feedings = await fetchFeedings(petId);
+          renderFeedingsList(feedings);
+        };
+
+        document.getElementById('feedingsList').addEventListener('click', async (event) => {
+          const deleteBtn = event.target.closest('[data-delete-feeding-id]');
+          if (!deleteBtn) return;
+
+          const confirmed = await showDeleteConfirm('Удалить отметку кормления?');
+          if (!confirmed) return;
+
+          const feedingId = Number(deleteBtn.getAttribute('data-delete-feeding-id'));
+          if (!Number.isFinite(feedingId)) return;
+
+          deleteBtn.disabled = true;
+          try {
+            await deleteFeeding(petId, feedingId);
+            setFeedingStatus('success', 'Отметка удалена ✅');
+            await refreshFeedings();
+          } catch (error) {
+            const statusCodeText = error.status ? ` (${error.status})` : '';
+            setFeedingStatus('error', `Ошибка${statusCodeText}: ${error.message || 'не удалось удалить отметку.'}`);
+            deleteBtn.disabled = false;
+          }
+        });
+
+        document.getElementById('markFeedingBtn').addEventListener('click', async () => {
+          const markBtn = document.getElementById('markFeedingBtn');
+          const notes = document.getElementById('feedingNotes').value.trim();
+          hideFeedingStatus();
+
+          markBtn.disabled = true;
+          try {
+            await createFeeding(petId, { notes: notes || null });
+            document.getElementById('feedingNotes').value = '';
+            setFeedingStatus('success', 'Кормление отмечено ✅');
+            await refreshFeedings();
+          } catch (error) {
+            const statusCodeText = error.status ? ` (${error.status})` : '';
+            setFeedingStatus('error', `Ошибка${statusCodeText}: ${error.message || 'не удалось отметить кормление.'}`);
+          } finally {
+            markBtn.disabled = false;
+          }
+        });
+
+        try {
+          await refreshFeedings();
+        } catch (error) {
+          const statusCodeText = error.status ? ` (${error.status})` : '';
+          setFeedingStatus('error', `Ошибка${statusCodeText}: ${error.message || 'не удалось загрузить отметки питания.'}`);
+          renderFeedingsList([]);
+        }
+      }
+
       async function renderCalendarScreen(petId) {
         screenSectionEl.innerHTML = `
           <div class="route-header"><button class="back-btn" id="backToProfileBtn" type="button">← Назад в профиль</button><span class="route-title">Календарь</span></div>
@@ -1766,13 +1937,14 @@
         const statusEl = document.getElementById('calendarStatus');
 
         try {
-          const [vaccinations, fleas, worms, weights, walks, events] = await Promise.all([
+          const [vaccinations, fleas, worms, weights, walks, events, feedings] = await Promise.all([
             fetchVaccinations(petId),
             fetchTreatments(petId, 'fleas'),
             fetchTreatments(petId, 'worms'),
             fetchWeights(petId),
             fetchWalks(petId),
             fetchEvents(petId),
+            fetchFeedings(petId),
           ]);
 
           const records = [
@@ -1782,6 +1954,7 @@
             ...weights.map((item) => ({ date: item.measured_at, title: `⚖️ Вес ${Number(item.weight).toFixed(1)} кг` })),
             ...walks.map((item) => ({ date: item.started_at, title: `🐾 Прогулка ${item.duration_min} мин` })),
             ...events.map((item) => ({ date: item.event_date, title: `🗂️ ${item.title || 'Событие'}` })),
+            ...feedings.map((item) => ({ date: item.fed_at, title: '🍽️ Кормление' })),
           ]
             .filter((item) => item.date)
             .map((item) => ({ ...item, ts: new Date(item.date).getTime() }))

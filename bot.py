@@ -109,6 +109,22 @@ def ensure_user_settings_table() -> None:
     conn.commit()
 
 
+def ensure_feedings_table() -> None:
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS feedings (
+              id SERIAL PRIMARY KEY,
+              pet_id INTEGER NOT NULL REFERENCES pets(id) ON DELETE CASCADE,
+              fed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+              notes TEXT
+            )
+            """
+        )
+    conn.commit()
+
+
 def is_valid_remind_time(value: str) -> bool:
     try:
         parsed = datetime.strptime(value, "%H:%M")
@@ -1010,6 +1026,18 @@ async def api_get_pet_summary(request: web.Request) -> web.Response:
         )
         latest_event_row = db_cursor.fetchone()
 
+        db_cursor.execute(
+            """
+            SELECT fed_at, notes
+            FROM feedings
+            WHERE pet_id = %s
+            ORDER BY fed_at DESC, id DESC
+            LIMIT 1
+            """,
+            (owned_pet_id,),
+        )
+        latest_feeding_row = db_cursor.fetchone()
+
     if pet_row is None:
         return web.json_response({"error": "Not found"}, status=404)
 
@@ -1059,6 +1087,13 @@ async def api_get_pet_summary(request: web.Request) -> web.Response:
             "title": latest_event_row[2],
         }
 
+    latest_feeding = None
+    if latest_feeding_row is not None:
+        latest_feeding = {
+            "fed_at": _iso_value(latest_feeding_row[0]),
+            "notes": latest_feeding_row[1],
+        }
+
     return web.json_response(
         {
             "pet": {"id": pet_row[0], "name": pet_row[1], "type": pet_row[2]},
@@ -1068,6 +1103,7 @@ async def api_get_pet_summary(request: web.Request) -> web.Response:
             "latest_treatment_worms": latest_treatment_worms,
             "latest_walk": latest_walk,
             "latest_event": latest_event,
+            "latest_feeding": latest_feeding,
         }
     )
 
@@ -2128,10 +2164,156 @@ async def api_delete_pet_treatment(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
+async def api_get_pet_feedings(request: web.Request) -> web.Response:
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
+
+    pet_id_raw = request.match_info.get("pet_id", "")
+    try:
+        pet_id = int(pet_id_raw)
+    except ValueError:
+        return web.json_response({"error": "pet_id must be an integer"}, status=400)
+
+    owned_pet_id = get_owned_pet_id(tg_user_id, pet_id)
+    if owned_pet_id is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            SELECT id, fed_at, notes
+            FROM feedings
+            WHERE pet_id = %s
+            ORDER BY fed_at DESC, id DESC
+            """,
+            (owned_pet_id,),
+        )
+        rows = db_cursor.fetchall()
+
+    feedings = [
+        {
+            "id": row[0],
+            "fed_at": row[1].isoformat() if row[1] else None,
+            "notes": row[2],
+        }
+        for row in rows
+    ]
+    return web.json_response({"feedings": feedings})
+
+
+async def api_create_pet_feeding(request: web.Request) -> web.Response:
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
+
+    pet_id_raw = request.match_info.get("pet_id", "")
+    try:
+        pet_id = int(pet_id_raw)
+    except ValueError:
+        return web.json_response({"error": "pet_id must be an integer"}, status=400)
+
+    owned_pet_id = get_owned_pet_id(tg_user_id, pet_id)
+    if owned_pet_id is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        payload = {}
+
+    if not isinstance(payload, dict):
+        return web.json_response({"error": "JSON body must be an object"}, status=400)
+
+    fed_at_raw = payload.get("fed_at")
+    fed_at = datetime.now()
+    if fed_at_raw is not None:
+        if not isinstance(fed_at_raw, str):
+            return web.json_response({"error": "fed_at must be ISO datetime string"}, status=400)
+        try:
+            fed_at = datetime.fromisoformat(fed_at_raw)
+        except ValueError:
+            return web.json_response({"error": "fed_at must be ISO datetime string"}, status=400)
+
+    notes = payload.get("notes")
+    if notes is None:
+        prepared_notes = None
+    elif isinstance(notes, str):
+        prepared_notes = notes.strip() or None
+    else:
+        return web.json_response({"error": "notes must be string"}, status=400)
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            INSERT INTO feedings (pet_id, fed_at, notes)
+            VALUES (%s, %s, %s)
+            RETURNING id, fed_at, notes
+            """,
+            (owned_pet_id, fed_at, prepared_notes),
+        )
+        row = db_cursor.fetchone()
+    conn.commit()
+
+    feeding_payload = {
+        "id": row[0],
+        "fed_at": row[1].isoformat() if row[1] else None,
+        "notes": row[2],
+    }
+    return web.json_response({"ok": True, "feeding": feeding_payload})
+
+
+async def api_delete_pet_feeding(request: web.Request) -> web.Response:
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
+
+    pet_id_raw = request.match_info.get("pet_id", "")
+    feeding_id_raw = request.match_info.get("feeding_id", "")
+
+    try:
+        pet_id = int(pet_id_raw)
+    except ValueError:
+        return web.json_response({"error": "pet_id must be an integer"}, status=400)
+
+    try:
+        feeding_id = int(feeding_id_raw)
+    except ValueError:
+        return web.json_response({"error": "feeding_id must be an integer"}, status=400)
+
+    owned_pet_id = get_owned_pet_id(tg_user_id, pet_id)
+    if owned_pet_id is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            DELETE FROM feedings
+            WHERE id = %s AND pet_id = %s
+            RETURNING id
+            """,
+            (feeding_id, owned_pet_id),
+        )
+        row = db_cursor.fetchone()
+    conn.commit()
+
+    if row is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    return web.json_response({"ok": True})
+
+
 async def start_web_server() -> None:
     ensure_user_columns()
     ensure_notification_log_table()
     ensure_user_settings_table()
+    ensure_feedings_table()
 
     app = web.Application()
     app.router.add_get("/", lambda request: web.FileResponse("index.html"))
@@ -2161,6 +2343,9 @@ async def start_web_server() -> None:
     app.router.add_get("/api/pets/{pet_id}/treatments", api_get_pet_treatments)
     app.router.add_post("/api/pets/{pet_id}/treatments", api_create_pet_treatment)
     app.router.add_delete("/api/pets/{pet_id}/treatments/{treatment_id}", api_delete_pet_treatment)
+    app.router.add_get("/api/pets/{pet_id}/feedings", api_get_pet_feedings)
+    app.router.add_post("/api/pets/{pet_id}/feedings", api_create_pet_feeding)
+    app.router.add_delete("/api/pets/{pet_id}/feedings/{feeding_id}", api_delete_pet_feeding)
 
     runner = web.AppRunner(app)
     await runner.setup()
