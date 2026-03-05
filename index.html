@@ -1800,6 +1800,7 @@
             return `
               <div class="pet-card">
                 <strong>🍽️ ${formatDateTimeRu(item.fed_at)}</strong>
+                <div>Что ел: ${item.food || '—'}</div>
                 ${notesText}
                 <div class="row">
                   <button class="icon-btn danger-btn" data-delete-feeding-id="${item.id}" type="button">🗑 Удалить</button>
@@ -1817,8 +1818,14 @@
           <div id="feedingStatus" class="status hidden"></div>
           <div id="feedingsList"></div>
 
+          <label class="label" for="feedingAt">Дата и время кормления</label>
+          <input id="feedingAt" class="field" type="datetime-local" />
+
+          <label class="label" for="feedingFood">Что ел питомец</label>
+          <input id="feedingFood" class="field" type="text" maxlength="200" placeholder="Например: сухой корм, 70 г" />
+
           <label class="label" for="feedingNotes">Заметка (опционально)</label>
-          <textarea id="feedingNotes" class="field" rows="2" maxlength="300" placeholder="Что ел питомец"></textarea>
+          <textarea id="feedingNotes" class="field" rows="2" maxlength="300" placeholder="Дополнительно"></textarea>
 
           <div class="row">
             <button id="markFeedingBtn" type="button" class="primary">✅ Отметить кормление</button>
@@ -1856,12 +1863,30 @@
 
         document.getElementById('markFeedingBtn').addEventListener('click', async () => {
           const markBtn = document.getElementById('markFeedingBtn');
+          const fedAtLocal = document.getElementById('feedingAt').value;
+          const food = document.getElementById('feedingFood').value.trim();
           const notes = document.getElementById('feedingNotes').value.trim();
           hideFeedingStatus();
 
+          if (!fedAtLocal) {
+            setFeedingStatus('error', 'Укажите дату и время кормления.');
+            return;
+          }
+
+          if (!food) {
+            setFeedingStatus('error', 'Укажите, что ел питомец.');
+            return;
+          }
+
           markBtn.disabled = true;
           try {
-            await createFeeding(petId, { notes: notes || null });
+            await createFeeding(petId, {
+              fed_at: fedAtLocal,
+              food,
+              notes: notes || null,
+            });
+            document.getElementById('feedingAt').value = '';
+            document.getElementById('feedingFood').value = '';
             document.getElementById('feedingNotes').value = '';
             setFeedingStatus('success', 'Кормление отмечено ✅');
             await refreshFeedings();
