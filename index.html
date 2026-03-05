@@ -21,7 +21,8 @@
         --shadow: 0 10px 30px rgba(0, 0, 0, .06);
       }
       body { background: var(--bg); color: var(--text); margin: 0; font-family: system-ui, sans-serif; }
-      .card { border-radius: calc(var(--radius) + 2px); padding: 16px 16px 84px; background: transparent; max-width: 520px; margin: 0 auto; box-sizing: border-box; }
+      .card { border-radius: calc(var(--radius) + 2px); padding: 16px 16px 24px; background: transparent; max-width: 520px; margin: 0 auto; box-sizing: border-box; }
+      .card.with-bottom-bar { padding-bottom: 90px; }
       button { padding: 12px 14px; border-radius: 12px; border: 1px solid transparent; cursor: pointer; }
       .pet-card { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-top: 10px; cursor: pointer; background: var(--card-bg); }
       .pet-type { font-size: 13px; color: var(--hint); }
@@ -126,48 +127,44 @@
         margin-bottom: 12px;
       }
       .route-title { font-size: 14px; color: var(--hint); }
-      .bottom-bar {
+      .bottomBar {
         position: fixed;
         left: 0;
         right: 0;
         bottom: 0;
-        z-index: 20;
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 8px;
-        min-height: 68px;
-        padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
-        background: var(--card);
-        box-shadow: 0 -5px 20px rgba(0, 0, 0, .08);
+        z-index: 30;
+        padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+        background: rgba(255, 255, 255, .85);
+        backdrop-filter: blur(12px);
+        border-top: 1px solid rgba(0, 0, 0, .06);
+        display: flex;
+        gap: 10px;
+        justify-content: space-between;
         box-sizing: border-box;
       }
-      .bottom-main-btn {
+      .btn {
+        height: 44px;
+        border-radius: 14px;
+        font-weight: 600;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 6px;
-        font-weight: 600;
+        font-size: 15px;
+        border: 1px solid transparent;
       }
-      .bottom-main-btn:disabled {
+      .btnGhost {
+        background: #F2F2F7;
+        color: #111;
+        flex: 1;
+      }
+      .btnPrimary {
+        background: #1677FF;
+        color: #fff;
+        flex: 1.2;
+      }
+      .btn:disabled {
         opacity: .45;
         cursor: not-allowed;
-      }
-      .bottom-bar button {
-        background: transparent;
-        color: var(--text);
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        font-size: 14px;
-      }
-      .bottom-bar button.active {
-        color: var(--btn);
-        background: color-mix(in srgb, var(--btn) 10%, var(--card));
-      }
-      .bottom-bar button.primary {
-        background: var(--btn);
-        color: var(--btnText);
-        border-color: transparent;
-        font-weight: 600;
       }
       @media (max-width: 460px) {
         .pet-name { font-size: 24px; }
@@ -203,9 +200,9 @@
       <div id="screenSection" class="hidden"></div>
     </div>
 
-    <div id="bottomBar" class="bottom-bar">
-      <button id="navBackBtn" class="bottom-main-btn" type="button">← Назад</button>
-      <button id="navCalendarBtn" class="bottom-main-btn" type="button">📅</button>
+    <div id="bottomBar" class="bottomBar hidden">
+      <button class="btn btnGhost" id="btnBack" type="button">← Назад</button>
+      <button class="btn btnPrimary" id="btnAddRecord" type="button">＋ Запись</button>
     </div>
 
     <script>
@@ -246,9 +243,10 @@
       const screenAddEl = document.getElementById('screenAdd');
       const screenPetEl = document.getElementById('screenPet');
       const screenSectionEl = document.getElementById('screenSection');
+      const cardEl = document.querySelector('.card');
       const bottomBarEl = document.getElementById('bottomBar');
-      const navBackBtn = document.getElementById('navBackBtn');
-      const navCalendarBtn = document.getElementById('navCalendarBtn');
+      const btnBack = document.getElementById('btnBack');
+      const btnAddRecord = document.getElementById('btnAddRecord');
 
       const typeLabel = { dog: '🐶 Собакен', cat: '🐱 Котофей' };
       const sexLabel = { male: 'Самец', female: 'Самка', unknown: 'Неизвестно' };
@@ -359,22 +357,16 @@
         screenAddEl.classList.toggle('hidden', screen !== 'add');
         screenPetEl.classList.toggle('hidden', screen !== 'pet');
         screenSectionEl.classList.toggle('hidden', screen !== 'section');
-        bottomBarEl.classList.toggle('hidden', screen === 'list');
       }
 
-      function updateBottomBar(route, isPetRoute) {
+      function updateBottomBar(route) {
         const petRouteMatch = route.match(/^pet\/(\d+)(?:\/(.+))?$/);
-        const petId = petRouteMatch ? petRouteMatch[1] : null;
+        const isPetProfileRoute = Boolean(petRouteMatch && !petRouteMatch[2]);
 
-        navCalendarBtn.disabled = !petId;
-        navCalendarBtn.classList.toggle('active', Boolean(petRouteMatch && petRouteMatch[2] === 'calendar'));
-        navBackBtn.classList.toggle('active', false);
-
-        if (!isPetRoute && route === 'list') {
-          navBackBtn.disabled = true;
-        } else {
-          navBackBtn.disabled = false;
-        }
+        bottomBarEl.classList.toggle('hidden', !isPetProfileRoute);
+        cardEl.classList.toggle('with-bottom-bar', isPetProfileRoute);
+        btnBack.disabled = !isPetProfileRoute;
+        btnAddRecord.disabled = !isPetProfileRoute;
       }
 
       function getCurrentPetRoute() {
@@ -2411,7 +2403,7 @@
         const route = hash.replace(/^#/, '');
 
         const petRouteMatch = route.match(/^pet\/(\d+)(?:\/(.+))?$/);
-        updateBottomBar(route, Boolean(petRouteMatch));
+        updateBottomBar(route);
 
         if (route === 'list') {
           showScreen('list');
@@ -2480,12 +2472,8 @@
         }
       }
 
-      navBackBtn.addEventListener('click', () => {
+      btnBack.addEventListener('click', () => {
         const petRoute = getCurrentPetRoute();
-        if (petRoute?.section) {
-          setHash(`#pet/${petRoute.petId}`);
-          return;
-        }
         if (petRoute) {
           setHash('#list');
           return;
@@ -2494,9 +2482,12 @@
           setHash('#list');
         }
       });
-      navCalendarBtn.addEventListener('click', () => {
+      btnAddRecord.addEventListener('click', () => {
         const petRoute = getCurrentPetRoute();
-        if (!petRoute) return;
+        if (!petRoute) {
+          alert('Скоро: добавление записи');
+          return;
+        }
         setHash(`#pet/${petRoute.petId}/calendar`);
       });
       dogTypeBtn.addEventListener('click', () => setType('dog'));
