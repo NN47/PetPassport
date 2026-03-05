@@ -21,7 +21,7 @@
         --shadow: 0 10px 30px rgba(0, 0, 0, .06);
       }
       body { background: var(--bg); color: var(--text); margin: 0; font-family: system-ui, sans-serif; }
-      .card { border-radius: calc(var(--radius) + 2px); padding: 16px; background: transparent; max-width: 520px; margin: 0 auto; box-sizing: border-box; }
+      .card { border-radius: calc(var(--radius) + 2px); padding: 16px 16px 92px; background: transparent; max-width: 520px; margin: 0 auto; box-sizing: border-box; }
       button { padding: 12px 14px; border-radius: 12px; border: 1px solid transparent; cursor: pointer; }
       .pet-card { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-top: 10px; cursor: pointer; background: var(--card-bg); }
       .pet-type { font-size: 13px; color: var(--hint); }
@@ -79,6 +79,48 @@
         gap: 8px;
         margin-top: 10px;
       }
+      .route-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .route-title { font-size: 14px; color: var(--hint); }
+      .bottom-bar {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 20;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        min-height: 68px;
+        padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+        background: var(--card);
+        box-shadow: 0 -5px 20px rgba(0, 0, 0, .08);
+        box-sizing: border-box;
+      }
+      .bottom-bar button {
+        background: transparent;
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-top: 2px solid transparent;
+        border-radius: 12px;
+        font-size: 14px;
+      }
+      .bottom-bar button.active {
+        color: var(--btn);
+        border-top-color: var(--btn);
+        background: color-mix(in srgb, var(--btn) 10%, var(--card));
+      }
+      .bottom-bar button.primary {
+        background: var(--btn);
+        color: var(--btnText);
+        border-color: transparent;
+        border-top-color: transparent;
+        font-weight: 600;
+      }
     </style>
   </head>
   <body>
@@ -89,13 +131,11 @@
       <div id="screenList">
         <img src="/assets/pets.png" class="pets-header" alt="PetPass" />
         <div id="pets"></div>
+      </div>
 
-        <div id="actions" class="row">
-          <button id="toggleFormBtn" class="primary">+ Добавить питомца</button>
-          <button id="openSettingsBtn" type="button" class="type-btn">⚙️ Настройки</button>
-        </div>
-
-        <div id="createPetForm" class="hidden">
+      <div id="screenAdd" class="hidden">
+        <h3>Добавить питомца</h3>
+        <div id="createPetForm">
           <input id="petNameInput" class="field" type="text" placeholder="Имя питомца" maxlength="64" />
           <div class="row">
             <button id="dogTypeBtn" type="button" class="type-btn active">🐶 Собакен</button>
@@ -131,7 +171,6 @@
 
         <div class="row">
           <button id="saveSettingsBtn" type="button" class="primary">Сохранить</button>
-          <button id="backToListFromSettingsBtn" type="button" class="back-btn">← Назад</button>
         </div>
 
         <div id="settingsStatus" class="status hidden"></div>
@@ -140,6 +179,12 @@
       <div class="row">
         <button onclick="Telegram.WebApp.close()">Закрыть</button>
       </div>
+    </div>
+
+    <div id="bottomBar" class="bottom-bar">
+      <button data-go="#list">Питомцы</button>
+      <button data-go="#add" class="primary">+ Добавить</button>
+      <button data-go="#settings">Настройки</button>
     </div>
 
     <script>
@@ -170,14 +215,13 @@
       const userEl = document.getElementById('u');
       const petsEl = document.getElementById('pets');
       const formEl = document.getElementById('createPetForm');
-      const toggleFormBtn = document.getElementById('toggleFormBtn');
       const petNameInput = document.getElementById('petNameInput');
       const savePetBtn = document.getElementById('savePetBtn');
-      const openSettingsBtn = document.getElementById('openSettingsBtn');
       const dogTypeBtn = document.getElementById('dogTypeBtn');
       const catTypeBtn = document.getElementById('catTypeBtn');
       const formErrorEl = document.getElementById('formError');
       const screenListEl = document.getElementById('screenList');
+      const screenAddEl = document.getElementById('screenAdd');
       const screenPetEl = document.getElementById('screenPet');
       const screenSectionEl = document.getElementById('screenSection');
       const screenSettingsEl = document.getElementById('screenSettings');
@@ -185,8 +229,8 @@
       const settingsRemindDaysEl = document.getElementById('settingsRemindDays');
       const settingsRemindTimeEl = document.getElementById('settingsRemindTime');
       const saveSettingsBtn = document.getElementById('saveSettingsBtn');
-      const backToListFromSettingsBtn = document.getElementById('backToListFromSettingsBtn');
       const settingsStatusEl = document.getElementById('settingsStatus');
+      const bottomBarEl = document.getElementById('bottomBar');
 
       const typeLabel = { dog: '🐶 Собакен', cat: '🐱 Котофей' };
       const sectionLabel = {
@@ -290,9 +334,18 @@
 
       function showScreen(screen) {
         screenListEl.classList.toggle('hidden', screen !== 'list');
+        screenAddEl.classList.toggle('hidden', screen !== 'add');
         screenPetEl.classList.toggle('hidden', screen !== 'pet');
         screenSectionEl.classList.toggle('hidden', screen !== 'section');
         screenSettingsEl.classList.toggle('hidden', screen !== 'settings');
+      }
+
+      function updateBottomBar(route, isPetRoute) {
+        bottomBarEl.classList.toggle('hidden', isPetRoute);
+        bottomBarEl.querySelectorAll('button[data-go]').forEach((btn) => {
+          const target = btn.getAttribute('data-go');
+          btn.classList.toggle('active', !isPetRoute && target === `#${route}`);
+        });
       }
 
       function setSettingsStatus(type, text) {
@@ -369,6 +422,7 @@
             remind_time: remindTime,
           });
           setSettingsStatus('success', 'Сохранено ✅');
+          window.setTimeout(clearSettingsStatus, 1500);
         } catch (error) {
           setSettingsStatus('error', error.message || 'Ошибка сохранения.');
         } finally {
@@ -521,7 +575,7 @@
 
         screenPetEl.innerHTML = `
           <div class="pet-head">
-            <button class="back-btn" id="backToListBtn">← Назад</button>
+            <div class="route-header"><button class="back-btn" id="backToListBtn">← Назад</button></div>
             <div class="row" style="margin-top:0;">
               <button class="icon-btn" id="editPetBtn" type="button">✎ Редактировать</button>
               <button class="icon-btn" id="deletePetBtn" type="button">🗑 Удалить</button>
@@ -540,11 +594,10 @@
           </div>
 
           <div class="action-grid">
-            <button class="action" data-section="info"><span class="action-emoji">ℹ️</span><span class="action-title">Инфо</span><span class="action-hint">Данные питомца и редактирование</span></button>
             <button class="action" data-section="vaccinations"><span class="action-emoji">💉</span><span class="action-title">Вакцинация</span><span class="action-hint">Последние и будущие прививки</span></button>
-            <button class="action" data-section="treatment"><span class="action-emoji">🧴</span><span class="action-title">Обработка</span><span class="action-hint">От блох и от глистов</span></button>
-            <button class="action" data-section="weights"><span class="action-emoji">⚖️</span><span class="action-title">Вес</span><span class="action-hint">История и текущий вес</span></button>
-            <button class="action" data-section="walk"><span class="action-emoji">🐾</span><span class="action-title">Прогулка</span><span class="action-hint">Таймер и журнал прогулок</span></button>
+            <button class="action" data-section="treatments"><span class="action-emoji">🧴</span><span class="action-title">Обработка</span><span class="action-hint">От блох и от глистов</span></button>
+            <button class="action" data-section="weight"><span class="action-emoji">⚖️</span><span class="action-title">Вес</span><span class="action-hint">История и текущий вес</span></button>
+            <button class="action" data-section="walks"><span class="action-emoji">🐾</span><span class="action-title">Прогулка</span><span class="action-hint">Таймер и журнал прогулок</span></button>
             <button class="action" data-section="events"><span class="action-emoji">🗂️</span><span class="action-title">События</span><span class="action-hint">Заметки и важные даты</span></button>
           </div>
         `;
@@ -1851,13 +1904,6 @@
         }
       }
 
-      function toggleForm() {
-        formErrorEl.innerText = '';
-        const willShow = formEl.classList.contains('hidden');
-        formEl.classList.toggle('hidden');
-        toggleFormBtn.innerText = willShow ? 'Скрыть форму' : '+ Добавить питомца';
-      }
-
       async function savePet() {
         formErrorEl.innerText = '';
         const name = petNameInput.value.trim();
@@ -1879,11 +1925,16 @@
             throw new Error('Не удалось сохранить питомца');
           }
 
-          formEl.classList.add('hidden');
-          toggleFormBtn.innerText = '+ Добавить питомца';
           petNameInput.value = '';
           setType('dog');
           await loadPets();
+          const payload = await response.json().catch(() => ({}));
+          const newPetId = payload.pet?.id || payload.id;
+          if (newPetId) {
+            setHash(`#pet/${newPetId}`);
+            return;
+          }
+          setHash('#list');
         } catch (error) {
           formErrorEl.innerText = 'Ошибка сохранения. Попробуйте еще раз.';
         } finally {
@@ -1900,8 +1951,16 @@
         const hash = window.location.hash || '#list';
         const route = hash.replace(/^#/, '');
 
+        const petRouteMatch = route.match(/^pet\/(\d+)(?:\/(.+))?$/);
+        updateBottomBar(route, Boolean(petRouteMatch));
+
         if (route === 'list') {
           showScreen('list');
+          return;
+        }
+
+        if (route === 'add') {
+          showScreen('add');
           return;
         }
 
@@ -1911,7 +1970,6 @@
           return;
         }
 
-        const petRouteMatch = route.match(/^pet\/(\d+)(?:\/(.+))?$/);
         if (!petRouteMatch) {
           setHash('#list');
           return;
@@ -1965,13 +2023,13 @@
         }
       }
 
-      toggleFormBtn.addEventListener('click', toggleForm);
-      openSettingsBtn.addEventListener('click', () => setHash('#settings'));
+      bottomBarEl.querySelectorAll('button[data-go]').forEach((btn) => {
+        btn.addEventListener('click', () => setHash(btn.getAttribute('data-go')));
+      });
       dogTypeBtn.addEventListener('click', () => setType('dog'));
       catTypeBtn.addEventListener('click', () => setType('cat'));
       savePetBtn.addEventListener('click', savePet);
       saveSettingsBtn.addEventListener('click', saveSettings);
-      backToListFromSettingsBtn.addEventListener('click', () => setHash('#list'));
       window.addEventListener('hashchange', renderRoute);
 
       bootstrap();
