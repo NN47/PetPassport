@@ -172,6 +172,11 @@
         display: flex;
         flex-direction: column;
         gap: 4px;
+        cursor: pointer;
+      }
+      .calendar-cell.selected-day {
+        border-color: color-mix(in srgb, var(--btn) 50%, var(--border));
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--btn) 45%, transparent);
       }
       .calendar-cell.muted-day { opacity: .5; }
       .calendar-day-number { font-size: 12px; font-weight: 700; }
@@ -180,6 +185,12 @@
         flex-direction: column;
         gap: 3px;
         min-height: 0;
+      }
+      .calendar-icons {
+        font-size: 16px;
+        line-height: 1.2;
+        letter-spacing: 1px;
+        word-break: break-word;
       }
       .calendar-event {
         font-size: 11px;
@@ -192,6 +203,15 @@
         text-overflow: ellipsis;
       }
       .calendar-more { font-size: 11px; color: var(--hint); }
+      .calendar-day-details {
+        margin-top: 12px;
+        border-top: 1px solid var(--border);
+        padding-top: 12px;
+      }
+      .calendar-day-title {
+        margin: 0 0 8px;
+        font-size: 14px;
+      }
       .bottomBar {
         position: fixed;
         width: 100%;
@@ -297,7 +317,7 @@
     <div id="bottomBar" class="bottomBar hidden">
       <div class="bottomBarInner">
         <button class="btn btnGhost" id="btnBack" type="button"><span class="ico">←</span><span class="txt">Назад</span></button>
-        <button class="btn btnPrimary" id="btnAddRecord" type="button"><span class="ico">＋</span><span class="txt">Запись</span></button>
+        <button class="btn btnPrimary" id="btnAddRecord" type="button"><span class="ico">📅</span><span class="txt">Календарь</span></button>
       </div>
     </div>
 
@@ -2001,10 +2021,13 @@
 
       async function renderCalendarScreen(petId) {
         screenSectionEl.innerHTML = `
+          <div class="row"><button class="back-btn" id="backToProfileBtn" type="button">← Назад</button></div>
           <div class="route-header"><span class="route-title">Календарь</span></div>
           <div id="calendarStatus" class="status hidden"></div>
           <div id="calendarList" class="calendar-shell"><div class="muted">Загрузка календаря...</div></div>
         `;
+
+        document.getElementById('backToProfileBtn').addEventListener('click', () => setHash(`#pet/${petId}`));
 
         const listEl = document.getElementById('calendarList');
         const statusEl = document.getElementById('calendarStatus');
@@ -2021,13 +2044,13 @@
           ]);
 
           const records = [
-            ...vaccinations.map((item) => ({ date: item.date_given, title: `💉 ${item.vaccine_name || 'Вакцинация'}` })),
-            ...fleas.map((item) => ({ date: item.date_given, title: `🧴 ${item.product_name || 'Обработка от блох'}` })),
-            ...worms.map((item) => ({ date: item.date_given, title: `🧴 ${item.product_name || 'Обработка от глистов'}` })),
-            ...weights.map((item) => ({ date: item.measured_at, title: `⚖️ Вес ${Number(item.weight).toFixed(1)} кг` })),
-            ...walks.map((item) => ({ date: item.started_at, title: `🐾 Прогулка ${item.duration_min} мин` })),
-            ...events.map((item) => ({ date: item.event_date, title: `🗂️ ${item.title || 'Событие'}` })),
-            ...feedings.map((item) => ({ date: item.fed_at, title: '🍽️ Кормление' })),
+            ...vaccinations.map((item) => ({ date: item.date_given, title: `💉 ${item.vaccine_name || 'Вакцинация'}`, emoji: '💉' })),
+            ...fleas.map((item) => ({ date: item.date_given, title: `🧴 ${item.product_name || 'Обработка от блох'}`, emoji: '🧴' })),
+            ...worms.map((item) => ({ date: item.date_given, title: `🧴 ${item.product_name || 'Обработка от глистов'}`, emoji: '🧴' })),
+            ...weights.map((item) => ({ date: item.measured_at, title: `⚖️ Вес ${Number(item.weight).toFixed(1)} кг`, emoji: '⚖️' })),
+            ...walks.map((item) => ({ date: item.started_at, title: `🐾 Прогулка ${item.duration_min} мин`, emoji: '🐾' })),
+            ...events.map((item) => ({ date: item.event_date, title: `🗂️ ${item.title || 'Событие'}`, emoji: '🗂️' })),
+            ...feedings.map((item) => ({ date: item.fed_at, title: '🍽️ Кормление', emoji: '🍽️' })),
           ]
             .map((item) => {
               if (!item.date) return null;
@@ -2046,6 +2069,7 @@
           const weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
           const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
           let monthOffset = 0;
+          let selectedDateKey = null;
 
           const toDateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
           const groupedByDay = records.reduce((acc, item) => {
@@ -2054,6 +2078,11 @@
             acc.get(key).push(item);
             return acc;
           }, new Map());
+
+          function formatDateLong(dateKey) {
+            const [year, month, day] = dateKey.split('-');
+            return `${day}.${month}.${year}`;
+          }
 
           function buildCalendarGrid(baseDate) {
             const year = baseDate.getFullYear();
@@ -2066,22 +2095,45 @@
             for (let i = 0; i < 42; i += 1) {
               const dayDate = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
               const inCurrentMonth = dayDate.getMonth() === month;
-              const dayRecords = groupedByDay.get(toDateKey(dayDate)) || [];
-              const visible = dayRecords.slice(0, 2);
-              const moreCount = dayRecords.length - visible.length;
+              const dayKey = toDateKey(dayDate);
+              const dayRecords = groupedByDay.get(dayKey) || [];
+              const emojis = dayRecords.map((entry) => entry.emoji).join(' ');
+              const selectedClass = selectedDateKey === dayKey ? ' selected-day' : '';
 
               cells.push(`
-                <div class="calendar-cell ${inCurrentMonth ? '' : 'muted-day'}">
+                <button class="calendar-cell ${inCurrentMonth ? '' : 'muted-day'}${selectedClass}" type="button" data-date-key="${dayKey}">
                   <div class="calendar-day-number">${dayDate.getDate()}</div>
                   <div class="calendar-events">
-                    ${visible.map((entry) => `<div class="calendar-event" title="${entry.title}">${entry.title}</div>`).join('')}
-                    ${moreCount > 0 ? `<div class="calendar-more">+${moreCount}</div>` : ''}
+                    <div class="calendar-icons">${emojis || ''}</div>
                   </div>
-                </div>
+                </button>
               `);
             }
 
             return cells.join('');
+          }
+
+          function renderSelectedDay() {
+            if (!selectedDateKey) {
+              return '<div class="calendar-day-details muted">Нажмите на день, чтобы увидеть записи.</div>';
+            }
+
+            const selectedRecords = groupedByDay.get(selectedDateKey) || [];
+            if (!selectedRecords.length) {
+              return `<div class="calendar-day-details"><p class="calendar-day-title">${formatDateLong(selectedDateKey)}</p><div class="muted">Записей нет.</div></div>`;
+            }
+
+            const items = selectedRecords
+              .sort((a, b) => b.ts - a.ts)
+              .map((entry) => `<div class="calendar-event" title="${entry.title}">${entry.title}</div>`)
+              .join('');
+
+            return `
+              <div class="calendar-day-details">
+                <p class="calendar-day-title">${formatDateLong(selectedDateKey)}</p>
+                ${items}
+              </div>
+            `;
           }
 
           function renderMonth() {
@@ -2097,6 +2149,7 @@
               </div>
               <div class="calendar-weekdays">${weekdays.map((day) => `<div class="calendar-weekday">${day}</div>`).join('')}</div>
               <div class="calendar-grid">${buildCalendarGrid(monthDate)}</div>
+              ${renderSelectedDay()}
             `;
 
             document.getElementById('calendarPrevMonth').addEventListener('click', () => {
@@ -2106,6 +2159,13 @@
             document.getElementById('calendarNextMonth').addEventListener('click', () => {
               monthOffset += 1;
               renderMonth();
+            });
+
+            listEl.querySelectorAll('[data-date-key]').forEach((cell) => {
+              cell.addEventListener('click', () => {
+                selectedDateKey = cell.getAttribute('data-date-key');
+                renderMonth();
+              });
             });
           }
 
