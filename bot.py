@@ -42,6 +42,7 @@ _db_conn = None
 _pets_columns_cache: set[str] | None = None
 _weights_columns_cache: set[str] | None = None
 _walks_columns_cache: set[str] | None = None
+_events_columns_cache: set[str] | None = None
 
 
 def get_db_connection():
@@ -163,6 +164,53 @@ def get_walks_mapping(columns: set[str]) -> tuple[str, str]:
         raise RuntimeError("walks table is missing duration_min/duration_minutes column")
 
     return started_column, duration_column
+
+
+def get_events_columns() -> set[str]:
+    global _events_columns_cache
+
+    if _events_columns_cache is not None:
+        return _events_columns_cache
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'events'
+            """
+        )
+        rows = db_cursor.fetchall()
+
+    _events_columns_cache = {row[0] for row in rows}
+    return _events_columns_cache
+
+
+def get_events_date_column(columns: set[str]) -> str:
+    if "event_date" in columns:
+        return "event_date"
+    if "happened_at" in columns:
+        return "happened_at"
+    raise RuntimeError("events table is missing event_date/happened_at column")
+
+
+def parse_event_datetime(raw_event_date: object) -> datetime | None:
+    if raw_event_date is None:
+        return None
+    if not isinstance(raw_event_date, str):
+        return None
+
+    event_date_str = raw_event_date.strip()
+    if not event_date_str:
+        return None
+
+    normalized = event_date_str.replace("Z", "+00:00")
+
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
 
 
 def parse_walk_started_at(raw_started_at: object) -> datetime | None:
@@ -1011,6 +1059,163 @@ async def api_create_pet_walk(request: web.Request) -> web.Response:
 
     return web.json_response({"ok": True, "walk": walk_payload})
 
+
+def validate_event_type(raw_type: object) -> str | None:
+    if not isinstance(raw_type, str):
+        return None
+
+    event_type = raw_type.strip().lower()
+    if event_type not in {"vet", "health", "note", "other"}:
+        return None
+    return event_type
+
+
+def encode_event_type_in_title(event_type: str, title: str) -> str:
+    if event_type == "note":
+        return title
+
+    type_prefix_map = {
+        "vet": "VET",
+        "health": "HEALTH",
+        "other": "OTHER",
+    }
+    return f"{type_prefix_map.get(event_type, 'NOTE')}: {title}"
+
+
+async def api_get_pet_events(request: web.Request) -> web.Response:
+    try:
+        tg_user_id = get_tg_user_id_from_header(request)
+    except ValueError as exc:
+        return web.json_response({"error": str(exc)}, status=400)
+
+    pet_id_raw = request.match_info.get("pet_id", "")
+    try:
+        pet_id = int(pet_id_raw)
+    except ValueError:
+        return web.json_response({"error": "pet_id must be an integer"}, status=400)
+
+    owned_pet_id = get_owned_pet_id(tg_user_id, pet_id)
+    if owned_pet_id is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    events_columns = get_events_columns()
+    event_date_column = get_events_date_column(events_columns)
+    type_select = "type" if "type" in events_columns else "NULL AS type"
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            f"""
+            SELECT id, {type_select}, title, description, {event_date_column}
+            FROM events
+            WHERE pet_id = %s
+            ORDER BY {event_date_column} DESC, id DESC
+            """,
+            (owned_pet_id,),
+        )
+        rows = db_cursor.fetchall()
+
+    events_payload = [
+        {
+            "id": row[0],
+            "type": row[1] if row[1] in {"vet", "health", "note", "other"} else "note",
+            "title": row[2],
+            "description": row[3],
+            "event_date": row[4].isoformat() if row[4] else None,
+        }
+        for row in rows
+    ]
+
+    return web.json_response({"events": events_payload})
+
+
+async def api_create_pet_event(request: web.Request) -> web.Response:
+    try:
+        tg_user_id = get_tg_user_id_from_header(request)
+    except ValueError as exc:
+        return web.json_response({"error": str(exc)}, status=400)
+
+    pet_id_raw = request.match_info.get("pet_id", "")
+    try:
+        pet_id = int(pet_id_raw)
+    except ValueError:
+        return web.json_response({"error": "pet_id must be an integer"}, status=400)
+
+    owned_pet_id = get_owned_pet_id(tg_user_id, pet_id)
+    if owned_pet_id is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    if not isinstance(payload, dict):
+        return web.json_response({"error": "JSON body must be an object"}, status=400)
+
+    event_type = validate_event_type(payload.get("type"))
+    if event_type is None:
+        return web.json_response({"error": "type must be vet, health, note or other"}, status=400)
+
+    title = str(payload.get("title", "")).strip()
+    if not title:
+        return web.json_response({"error": "title is required"}, status=400)
+
+    description = payload.get("description")
+    if description is None:
+        prepared_description = None
+    elif isinstance(description, str):
+        prepared_description = description.strip() or None
+    else:
+        return web.json_response({"error": "description must be string"}, status=400)
+
+    raw_event_date = payload.get("event_date")
+    if raw_event_date is None:
+        event_date = datetime.now()
+    else:
+        event_date = parse_event_datetime(raw_event_date)
+        if event_date is None:
+            return web.json_response({"error": "event_date must be ISO datetime or YYYY-MM-DDTHH:MM"}, status=400)
+
+    events_columns = get_events_columns()
+    event_date_column = get_events_date_column(events_columns)
+
+    stored_title = title
+    if "type" not in events_columns:
+        stored_title = encode_event_type_in_title(event_type, title)
+
+    insert_columns = ["pet_id", "title", "description", event_date_column]
+    insert_values: list[object] = [owned_pet_id, stored_title, prepared_description, event_date]
+
+    if "type" in events_columns:
+        insert_columns.append("type")
+        insert_values.append(event_type)
+
+    returning_type = "type" if "type" in events_columns else "NULL AS type"
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        placeholders = ", ".join(["%s"] * len(insert_columns))
+        db_cursor.execute(
+            f"""
+            INSERT INTO events ({', '.join(insert_columns)})
+            VALUES ({placeholders})
+            RETURNING id, {returning_type}, title, description, {event_date_column}
+            """,
+            tuple(insert_values),
+        )
+        row = db_cursor.fetchone()
+    conn.commit()
+
+    event_payload = {
+        "id": row[0],
+        "type": row[1] if row[1] in {"vet", "health", "note", "other"} else event_type,
+        "title": row[2],
+        "description": row[3],
+        "event_date": row[4].isoformat() if row[4] else None,
+    }
+    return web.json_response({"ok": True, "event": event_payload})
+
 def validate_treatment_type(raw_type: object) -> str | None:
     if not isinstance(raw_type, str):
         return None
@@ -1171,6 +1376,8 @@ async def start_web_server() -> None:
     app.router.add_post("/api/pets/{pet_id}/weights", api_create_pet_weight)
     app.router.add_get("/api/pets/{pet_id}/walks", api_get_pet_walks)
     app.router.add_post("/api/pets/{pet_id}/walks", api_create_pet_walk)
+    app.router.add_get("/api/pets/{pet_id}/events", api_get_pet_events)
+    app.router.add_post("/api/pets/{pet_id}/events", api_create_pet_event)
     app.router.add_get("/api/pets/{pet_id}/treatments", api_get_pet_treatments)
     app.router.add_post("/api/pets/{pet_id}/treatments", api_create_pet_treatment)
 
