@@ -1362,6 +1362,48 @@ async def api_create_pet_vaccination(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "vaccination": vaccination_payload})
 
 
+async def api_delete_pet_vaccination(request: web.Request) -> web.Response:
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
+
+    pet_id_raw = request.match_info.get("pet_id", "")
+    vaccination_id_raw = request.match_info.get("vaccination_id", "")
+
+    try:
+        pet_id = int(pet_id_raw)
+    except ValueError:
+        return web.json_response({"error": "pet_id must be an integer"}, status=400)
+
+    try:
+        vaccination_id = int(vaccination_id_raw)
+    except ValueError:
+        return web.json_response({"error": "vaccination_id must be an integer"}, status=400)
+
+    owned_pet_id = get_owned_pet_id(tg_user_id, pet_id)
+    if owned_pet_id is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            DELETE FROM vaccinations
+            WHERE id = %s AND pet_id = %s
+            RETURNING id
+            """,
+            (vaccination_id, owned_pet_id),
+        )
+        row = db_cursor.fetchone()
+    conn.commit()
+
+    if row is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    return web.json_response({"ok": True})
+
+
 async def api_get_pet_weights(request: web.Request) -> web.Response:
     auth_context = get_tg_user_id(request)
     if auth_context is None:
@@ -1486,6 +1528,48 @@ async def api_create_pet_weight(request: web.Request) -> web.Response:
         "notes": row[3],
     }
     return web.json_response({"ok": True, "weight": weight_payload})
+
+
+async def api_delete_pet_weight(request: web.Request) -> web.Response:
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
+
+    pet_id_raw = request.match_info.get("pet_id", "")
+    weight_id_raw = request.match_info.get("weight_id", "")
+
+    try:
+        pet_id = int(pet_id_raw)
+    except ValueError:
+        return web.json_response({"error": "pet_id must be an integer"}, status=400)
+
+    try:
+        weight_id = int(weight_id_raw)
+    except ValueError:
+        return web.json_response({"error": "weight_id must be an integer"}, status=400)
+
+    owned_pet_id = get_owned_pet_id(tg_user_id, pet_id)
+    if owned_pet_id is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            DELETE FROM weights
+            WHERE id = %s AND pet_id = %s
+            RETURNING id
+            """,
+            (weight_id, owned_pet_id),
+        )
+        row = db_cursor.fetchone()
+    conn.commit()
+
+    if row is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    return web.json_response({"ok": True})
 
 
 
@@ -1617,6 +1701,48 @@ async def api_create_pet_walk(request: web.Request) -> web.Response:
     }
 
     return web.json_response({"ok": True, "walk": walk_payload})
+
+
+async def api_delete_pet_walk(request: web.Request) -> web.Response:
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
+
+    pet_id_raw = request.match_info.get("pet_id", "")
+    walk_id_raw = request.match_info.get("walk_id", "")
+
+    try:
+        pet_id = int(pet_id_raw)
+    except ValueError:
+        return web.json_response({"error": "pet_id must be an integer"}, status=400)
+
+    try:
+        walk_id = int(walk_id_raw)
+    except ValueError:
+        return web.json_response({"error": "walk_id must be an integer"}, status=400)
+
+    owned_pet_id = get_owned_pet_id(tg_user_id, pet_id)
+    if owned_pet_id is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            DELETE FROM walks
+            WHERE id = %s AND pet_id = %s
+            RETURNING id
+            """,
+            (walk_id, owned_pet_id),
+        )
+        row = db_cursor.fetchone()
+    conn.commit()
+
+    if row is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    return web.json_response({"ok": True})
 
 
 def validate_event_type(raw_type: object) -> str | None:
@@ -1775,6 +1901,48 @@ async def api_create_pet_event(request: web.Request) -> web.Response:
     }
     return web.json_response({"ok": True, "event": event_payload})
 
+
+async def api_delete_pet_event(request: web.Request) -> web.Response:
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
+
+    pet_id_raw = request.match_info.get("pet_id", "")
+    event_id_raw = request.match_info.get("event_id", "")
+
+    try:
+        pet_id = int(pet_id_raw)
+    except ValueError:
+        return web.json_response({"error": "pet_id must be an integer"}, status=400)
+
+    try:
+        event_id = int(event_id_raw)
+    except ValueError:
+        return web.json_response({"error": "event_id must be an integer"}, status=400)
+
+    owned_pet_id = get_owned_pet_id(tg_user_id, pet_id)
+    if owned_pet_id is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            DELETE FROM events
+            WHERE id = %s AND pet_id = %s
+            RETURNING id
+            """,
+            (event_id, owned_pet_id),
+        )
+        row = db_cursor.fetchone()
+    conn.commit()
+
+    if row is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    return web.json_response({"ok": True})
+
 def validate_treatment_type(raw_type: object) -> str | None:
     if not isinstance(raw_type, str):
         return None
@@ -1918,6 +2086,48 @@ async def api_create_pet_treatment(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "treatment": treatment_payload})
 
 
+async def api_delete_pet_treatment(request: web.Request) -> web.Response:
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
+
+    pet_id_raw = request.match_info.get("pet_id", "")
+    treatment_id_raw = request.match_info.get("treatment_id", "")
+
+    try:
+        pet_id = int(pet_id_raw)
+    except ValueError:
+        return web.json_response({"error": "pet_id must be an integer"}, status=400)
+
+    try:
+        treatment_id = int(treatment_id_raw)
+    except ValueError:
+        return web.json_response({"error": "treatment_id must be an integer"}, status=400)
+
+    owned_pet_id = get_owned_pet_id(tg_user_id, pet_id)
+    if owned_pet_id is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            DELETE FROM treatments
+            WHERE id = %s AND pet_id = %s
+            RETURNING id
+            """,
+            (treatment_id, owned_pet_id),
+        )
+        row = db_cursor.fetchone()
+    conn.commit()
+
+    if row is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    return web.json_response({"ok": True})
+
+
 async def start_web_server() -> None:
     ensure_user_columns()
     ensure_notification_log_table()
@@ -1938,14 +2148,19 @@ async def start_web_server() -> None:
     app.router.add_delete("/api/pets/{pet_id}", api_delete_pet)
     app.router.add_get("/api/pets/{pet_id}/vaccinations", api_get_pet_vaccinations)
     app.router.add_post("/api/pets/{pet_id}/vaccinations", api_create_pet_vaccination)
+    app.router.add_delete("/api/pets/{pet_id}/vaccinations/{vaccination_id}", api_delete_pet_vaccination)
     app.router.add_get("/api/pets/{pet_id}/weights", api_get_pet_weights)
     app.router.add_post("/api/pets/{pet_id}/weights", api_create_pet_weight)
+    app.router.add_delete("/api/pets/{pet_id}/weights/{weight_id}", api_delete_pet_weight)
     app.router.add_get("/api/pets/{pet_id}/walks", api_get_pet_walks)
     app.router.add_post("/api/pets/{pet_id}/walks", api_create_pet_walk)
+    app.router.add_delete("/api/pets/{pet_id}/walks/{walk_id}", api_delete_pet_walk)
     app.router.add_get("/api/pets/{pet_id}/events", api_get_pet_events)
     app.router.add_post("/api/pets/{pet_id}/events", api_create_pet_event)
+    app.router.add_delete("/api/pets/{pet_id}/events/{event_id}", api_delete_pet_event)
     app.router.add_get("/api/pets/{pet_id}/treatments", api_get_pet_treatments)
     app.router.add_post("/api/pets/{pet_id}/treatments", api_create_pet_treatment)
+    app.router.add_delete("/api/pets/{pet_id}/treatments/{treatment_id}", api_delete_pet_treatment)
 
     runner = web.AppRunner(app)
     await runner.setup()
