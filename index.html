@@ -103,6 +103,11 @@
         object-fit: contain;
         margin-bottom: 10px;
       }
+      .add-pet-btn {
+        width: 100%;
+        margin-top: 10px;
+        font-weight: 600;
+      }
       .pet-list-avatar {
         width: 48px;
         height: 48px;
@@ -175,6 +180,7 @@
 
       <div id="screenList">
         <img src="/assets/pets.png" class="pets-header" alt="PetPass" />
+        <button id="addPetListBtn" class="primary add-pet-btn" type="button">+ Добавить питомца</button>
         <div id="pets"></div>
       </div>
 
@@ -229,6 +235,7 @@
 
       const userEl = document.getElementById('u');
       const petsEl = document.getElementById('pets');
+      const addPetListBtn = document.getElementById('addPetListBtn');
       const formEl = document.getElementById('createPetForm');
       const petNameInput = document.getElementById('petNameInput');
       const savePetBtn = document.getElementById('savePetBtn');
@@ -352,6 +359,7 @@
         screenAddEl.classList.toggle('hidden', screen !== 'add');
         screenPetEl.classList.toggle('hidden', screen !== 'pet');
         screenSectionEl.classList.toggle('hidden', screen !== 'section');
+        bottomBarEl.classList.toggle('hidden', screen === 'list');
       }
 
       function updateBottomBar(route, isPetRoute) {
@@ -2473,6 +2481,7 @@
       dogTypeBtn.addEventListener('click', () => setType('dog'));
       catTypeBtn.addEventListener('click', () => setType('cat'));
       savePetBtn.addEventListener('click', savePet);
+      addPetListBtn.addEventListener('click', () => setHash('#add'));
       window.addEventListener('hashchange', () => {
         renderRoute();
       });
