@@ -50,6 +50,7 @@
       .summary-value.empty { color: var(--hint); }
       .pet-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: var(--gap); }
       .icon-btn { background: var(--card); color: var(--text); padding: 8px 10px; font-size: 14px; border: 1px solid var(--border); }
+      .danger-btn { background: color-mix(in srgb, #dc3545 18%, var(--card)); color: #b42318; border-color: color-mix(in srgb, #dc3545 36%, var(--border)); }
       .pet-hero { min-height: 160px; border-radius: var(--radius); background: linear-gradient(160deg, color-mix(in srgb, var(--btn) 22%, var(--card)) 0%, var(--card) 100%); box-shadow: var(--shadow); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; position: relative; text-align: center; margin-bottom: var(--gap); }
       .pet-hero.cat { background: linear-gradient(160deg, color-mix(in srgb, #ffbe7d 38%, var(--card)) 0%, var(--card) 100%); }
       .pet-hero-menu { position: absolute; right: 12px; top: 12px; width: 32px; height: 32px; padding: 0; border-radius: 50%; background: color-mix(in srgb, var(--card) 92%, transparent); color: var(--hint); visibility: hidden; }
@@ -725,6 +726,20 @@
         return response.json();
       }
 
+      async function deleteVaccination(petId, vaccinationId) {
+        const response = await fetch(`/api/pets/${petId}/vaccinations/${vaccinationId}`, {
+          method: 'DELETE',
+          headers: getApiHeaders(),
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          const error = new Error(errData.error || 'Не удалось удалить вакцинацию');
+          error.status = response.status;
+          throw error;
+        }
+      }
+
       function setVaccinationStatus(type, message) {
         const statusEl = document.getElementById('vaccinationStatus');
         if (!statusEl) return;
@@ -762,6 +777,9 @@
                 <strong>${formatDateRu(item.date_given)} — ${item.vaccine_name}</strong>
                 ${nextDueText}
                 ${notesText}
+                <div class="row">
+                  <button class="icon-btn danger-btn" data-delete-vaccination-id="${item.id}" type="button">🗑 Удалить</button>
+                </div>
               </div>
             `;
           })
@@ -829,6 +847,28 @@
           resetVaccinationForm();
           hideVaccinationStatus();
           toggleVaccinationForm(false);
+        });
+
+        document.getElementById('vaccinationsList').addEventListener('click', async (event) => {
+          const deleteBtn = event.target.closest('[data-delete-vaccination-id]');
+          if (!deleteBtn) return;
+
+          const confirmed = await showDeleteConfirm('Удалить запись вакцинации?');
+          if (!confirmed) return;
+
+          const vaccinationId = Number(deleteBtn.getAttribute('data-delete-vaccination-id'));
+          if (!Number.isFinite(vaccinationId)) return;
+
+          deleteBtn.disabled = true;
+          try {
+            await deleteVaccination(petId, vaccinationId);
+            setVaccinationStatus('success', 'Запись вакцинации удалена ✅');
+            await refreshVaccinations(petId);
+          } catch (error) {
+            const statusCodeText = error.status ? ` (${error.status})` : '';
+            setVaccinationStatus('error', `Ошибка${statusCodeText}: ${error.message || 'не удалось удалить запись.'}`);
+            deleteBtn.disabled = false;
+          }
         });
 
         document.getElementById('saveVaccinationBtn').addEventListener('click', async () => {
@@ -912,6 +952,20 @@
         return response.json();
       }
 
+      async function deleteTreatment(petId, treatmentId) {
+        const response = await fetch(`/api/pets/${petId}/treatments/${treatmentId}`, {
+          method: 'DELETE',
+          headers: getApiHeaders(),
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          const error = new Error(errData.error || 'Не удалось удалить обработку');
+          error.status = response.status;
+          throw error;
+        }
+      }
+
       function setTreatmentStatus(type, message) {
         const statusEl = document.getElementById('treatmentStatus');
         if (!statusEl) return;
@@ -949,6 +1003,9 @@
                 <strong>${formatDateRu(item.date_given)} — ${item.product_name}</strong>
                 ${nextDueText}
                 ${notesText}
+                <div class="row">
+                  <button class="icon-btn danger-btn" data-delete-treatment-id="${item.id}" type="button">🗑 Удалить</button>
+                </div>
               </div>
             `;
           })
@@ -1048,6 +1105,28 @@
         tabFleasBtn.addEventListener('click', () => switchType('fleas'));
         tabWormsBtn.addEventListener('click', () => switchType('worms'));
 
+        document.getElementById('treatmentsList').addEventListener('click', async (event) => {
+          const deleteBtn = event.target.closest('[data-delete-treatment-id]');
+          if (!deleteBtn) return;
+
+          const confirmed = await showDeleteConfirm('Удалить запись обработки?');
+          if (!confirmed) return;
+
+          const treatmentId = Number(deleteBtn.getAttribute('data-delete-treatment-id'));
+          if (!Number.isFinite(treatmentId)) return;
+
+          deleteBtn.disabled = true;
+          try {
+            await deleteTreatment(petId, treatmentId);
+            setTreatmentStatus('success', 'Запись обработки удалена ✅');
+            await refreshTreatments();
+          } catch (error) {
+            const statusCodeText = error.status ? ` (${error.status})` : '';
+            setTreatmentStatus('error', `Ошибка${statusCodeText}: ${error.message || 'не удалось удалить запись.'}`);
+            deleteBtn.disabled = false;
+          }
+        });
+
         document.getElementById('saveTreatmentBtn').addEventListener('click', async () => {
           const saveBtn = document.getElementById('saveTreatmentBtn');
           const productName = document.getElementById('treatmentProductName').value.trim();
@@ -1131,6 +1210,20 @@
         return response.json();
       }
 
+      async function deleteWeight(petId, weightId) {
+        const response = await fetch(`/api/pets/${petId}/weights/${weightId}`, {
+          method: 'DELETE',
+          headers: getApiHeaders(),
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          const error = new Error(errData.error || 'Не удалось удалить запись веса');
+          error.status = response.status;
+          throw error;
+        }
+      }
+
       function setWeightStatus(type, message) {
         const statusEl = document.getElementById('weightStatus');
         if (!statusEl) return;
@@ -1188,6 +1281,9 @@
               <div class="pet-card">
                 <strong>${formatDateRu(item.date)} — ${Number(item.weight).toFixed(1)} кг</strong>
                 ${notesText}
+                <div class="row">
+                  <button class="icon-btn danger-btn" data-delete-weight-id="${item.id}" type="button">🗑 Удалить</button>
+                </div>
               </div>
             `;
           })
@@ -1238,6 +1334,28 @@
           resetWeightForm();
           hideWeightStatus();
           toggleWeightForm(false);
+        });
+
+        document.getElementById('weightsList').addEventListener('click', async (event) => {
+          const deleteBtn = event.target.closest('[data-delete-weight-id]');
+          if (!deleteBtn) return;
+
+          const confirmed = await showDeleteConfirm('Удалить запись веса?');
+          if (!confirmed) return;
+
+          const weightId = Number(deleteBtn.getAttribute('data-delete-weight-id'));
+          if (!Number.isFinite(weightId)) return;
+
+          deleteBtn.disabled = true;
+          try {
+            await deleteWeight(petId, weightId);
+            setWeightStatus('success', 'Запись веса удалена ✅');
+            await refreshWeights();
+          } catch (error) {
+            const statusCodeText = error.status ? ` (${error.status})` : '';
+            setWeightStatus('error', `Ошибка${statusCodeText}: ${error.message || 'не удалось удалить запись.'}`);
+            deleteBtn.disabled = false;
+          }
         });
 
         document.getElementById('saveWeightBtn').addEventListener('click', async () => {
@@ -1320,6 +1438,20 @@
         return response.json();
       }
 
+      async function deleteWalk(petId, walkId) {
+        const response = await fetch(`/api/pets/${petId}/walks/${walkId}`, {
+          method: 'DELETE',
+          headers: getApiHeaders(),
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          const error = new Error(errData.error || 'Не удалось удалить прогулку');
+          error.status = response.status;
+          throw error;
+        }
+      }
+
       function setWalkStatus(type, message) {
         const statusEl = document.getElementById('walkStatus');
         if (!statusEl) return;
@@ -1350,6 +1482,9 @@
               <div class="pet-card">
                 <strong>${formatDateTimeRu(walk.started_at)} — ${walk.duration_min} мин</strong>
                 ${notesText}
+                <div class="row">
+                  <button class="icon-btn danger-btn" data-delete-walk-id="${walk.id}" type="button">🗑 Удалить</button>
+                </div>
               </div>
             `;
           })
@@ -1485,6 +1620,27 @@
           hideWalkStatus();
           toggleWalkForm(true);
         });
+        document.getElementById('walksList').addEventListener('click', async (event) => {
+          const deleteBtn = event.target.closest('[data-delete-walk-id]');
+          if (!deleteBtn) return;
+
+          const confirmed = await showDeleteConfirm('Удалить запись прогулки?');
+          if (!confirmed) return;
+
+          const walkId = Number(deleteBtn.getAttribute('data-delete-walk-id'));
+          if (!Number.isFinite(walkId)) return;
+
+          deleteBtn.disabled = true;
+          try {
+            await deleteWalk(petId, walkId);
+            setWalkStatus('success', 'Запись прогулки удалена ✅');
+            await refreshWalks();
+          } catch (error) {
+            const statusCodeText = error.status ? ` (${error.status})` : '';
+            setWalkStatus('error', `Ошибка${statusCodeText}: ${error.message || 'не удалось удалить запись.'}`);
+            deleteBtn.disabled = false;
+          }
+        });
         document.getElementById('cancelWalkBtn').addEventListener('click', () => {
           resetWalkForm();
           hideWalkStatus();
@@ -1588,6 +1744,20 @@
         return response.json();
       }
 
+      async function deleteEvent(petId, eventId) {
+        const response = await fetch(`/api/pets/${petId}/events/${eventId}`, {
+          method: 'DELETE',
+          headers: getApiHeaders(),
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          const error = new Error(errData.error || 'Не удалось удалить событие');
+          error.status = response.status;
+          throw error;
+        }
+      }
+
       function setEventStatus(type, message) {
         const statusEl = document.getElementById('eventStatus');
         if (!statusEl) return;
@@ -1627,6 +1797,9 @@
                 <div class="muted">Тип: ${typeMap[event.type] || typeMap.note}</div>
                 <strong>${event.title || ''}</strong>
                 ${descriptionText}
+                <div class="row">
+                  <button class="icon-btn danger-btn" data-delete-event-id="${event.id}" type="button">🗑 Удалить</button>
+                </div>
               </div>
             `;
           })
@@ -1695,6 +1868,28 @@
           resetEventForm();
           hideEventStatus();
           toggleEventForm(false);
+        });
+
+        document.getElementById('eventsList').addEventListener('click', async (event) => {
+          const deleteBtn = event.target.closest('[data-delete-event-id]');
+          if (!deleteBtn) return;
+
+          const confirmed = await showDeleteConfirm('Удалить событие?');
+          if (!confirmed) return;
+
+          const eventId = Number(deleteBtn.getAttribute('data-delete-event-id'));
+          if (!Number.isFinite(eventId)) return;
+
+          deleteBtn.disabled = true;
+          try {
+            await deleteEvent(petId, eventId);
+            setEventStatus('success', 'Событие удалено ✅');
+            await refreshEvents();
+          } catch (error) {
+            const statusCodeText = error.status ? ` (${error.status})` : '';
+            setEventStatus('error', `Ошибка${statusCodeText}: ${error.message || 'не удалось удалить запись.'}`);
+            deleteBtn.disabled = false;
+          }
         });
 
         const refreshEvents = async () => {
