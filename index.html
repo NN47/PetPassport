@@ -128,7 +128,7 @@
         bottom: 0;
         z-index: 20;
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 8px;
         min-height: 68px;
         padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
@@ -143,51 +143,25 @@
         gap: 6px;
         font-weight: 600;
       }
-      .bottom-main-btn.plus {
-        background: var(--btn);
-        color: var(--btnText);
-        border-color: transparent;
-      }
       .bottom-main-btn:disabled {
         opacity: .45;
         cursor: not-allowed;
-      }
-      .quick-add-menu {
-        position: fixed;
-        left: 12px;
-        right: 12px;
-        bottom: calc(84px + env(safe-area-inset-bottom));
-        z-index: 25;
-        padding: 12px;
-        border-radius: 14px;
-        background: var(--card);
-        box-shadow: var(--shadow);
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 8px;
-      }
-      .quick-add-menu button {
-        background: color-mix(in srgb, var(--btn) 9%, var(--card));
-        color: var(--text);
       }
       .bottom-bar button {
         background: transparent;
         color: var(--text);
         border: 1px solid var(--border);
-        border-top: 2px solid transparent;
         border-radius: 12px;
         font-size: 14px;
       }
       .bottom-bar button.active {
         color: var(--btn);
-        border-top-color: var(--btn);
         background: color-mix(in srgb, var(--btn) 10%, var(--card));
       }
       .bottom-bar button.primary {
         background: var(--btn);
         color: var(--btnText);
         border-color: transparent;
-        border-top-color: transparent;
         font-weight: 600;
       }
       @media (max-width: 460px) {
@@ -225,11 +199,8 @@
 
     <div id="bottomBar" class="bottom-bar">
       <button id="navBackBtn" class="bottom-main-btn" type="button">← Назад</button>
-      <button id="navAddBtn" class="bottom-main-btn plus" type="button">＋</button>
       <button id="navCalendarBtn" class="bottom-main-btn" type="button">📅</button>
     </div>
-
-    <div id="quickAddMenu" class="quick-add-menu hidden"></div>
 
     <script>
       const tg = window.Telegram.WebApp;
@@ -270,9 +241,7 @@
       const screenSectionEl = document.getElementById('screenSection');
       const bottomBarEl = document.getElementById('bottomBar');
       const navBackBtn = document.getElementById('navBackBtn');
-      const navAddBtn = document.getElementById('navAddBtn');
       const navCalendarBtn = document.getElementById('navCalendarBtn');
-      const quickAddMenuEl = document.getElementById('quickAddMenu');
 
       const typeLabel = { dog: '🐶 Собакен', cat: '🐱 Котофей' };
       const sexLabel = { male: 'Самец', female: 'Самка', unknown: 'Неизвестно' };
@@ -288,14 +257,6 @@
         feedings: 'Питание',
         calendar: 'Календарь',
       };
-      const quickAddSections = [
-        { section: 'vaccinations', label: '💉 Вакцинация' },
-        { section: 'treatments', label: '🧴 Обработка' },
-        { section: 'weights', label: '⚖️ Вес' },
-        { section: 'walks', label: '🐾 Прогулка' },
-        { section: 'events', label: '🗂️ Событие' },
-        { section: 'feedings', label: '🍽️ Питание' },
-      ];
       const typeImage = { dog: '/assets/dog.png', cat: '/assets/cat.png' };
 
       let selectedType = 'dog';
@@ -397,7 +358,6 @@
         const petRouteMatch = route.match(/^pet\/(\d+)(?:\/(.+))?$/);
         const petId = petRouteMatch ? petRouteMatch[1] : null;
 
-        navAddBtn.disabled = !petId;
         navCalendarBtn.disabled = !petId;
         navCalendarBtn.classList.toggle('active', Boolean(petRouteMatch && petRouteMatch[2] === 'calendar'));
         navBackBtn.classList.toggle('active', false);
@@ -414,20 +374,6 @@
         const petRouteMatch = route.match(/^pet\/(\d+)(?:\/(.+))?$/);
         if (!petRouteMatch) return null;
         return { petId: petRouteMatch[1], section: petRouteMatch[2] || '' };
-      }
-
-      function closeQuickAddMenu() {
-        quickAddMenuEl.classList.add('hidden');
-        quickAddMenuEl.innerHTML = '';
-      }
-
-      function openQuickAddMenu() {
-        const petRoute = getCurrentPetRoute();
-        if (!petRoute) return;
-        quickAddMenuEl.innerHTML = quickAddSections
-          .map((item) => `<button type="button" data-add-section="${item.section}">${item.label}</button>`)
-          .join('');
-        quickAddMenuEl.classList.remove('hidden');
       }
 
       function setHash(nextHash) {
@@ -2499,7 +2445,6 @@
       }
 
       navBackBtn.addEventListener('click', () => {
-        closeQuickAddMenu();
         const petRoute = getCurrentPetRoute();
         if (petRoute?.section) {
           setHash(`#pet/${petRoute.petId}`);
@@ -2513,38 +2458,15 @@
           setHash('#list');
         }
       });
-      navAddBtn.addEventListener('click', () => {
-        if (quickAddMenuEl.classList.contains('hidden')) {
-          openQuickAddMenu();
-          return;
-        }
-        closeQuickAddMenu();
-      });
       navCalendarBtn.addEventListener('click', () => {
-        closeQuickAddMenu();
         const petRoute = getCurrentPetRoute();
         if (!petRoute) return;
         setHash(`#pet/${petRoute.petId}/calendar`);
-      });
-      quickAddMenuEl.addEventListener('click', (event) => {
-        const btn = event.target.closest('[data-add-section]');
-        if (!btn) return;
-        const petRoute = getCurrentPetRoute();
-        if (!petRoute) return;
-        const section = btn.getAttribute('data-add-section');
-        closeQuickAddMenu();
-        setHash(`#pet/${petRoute.petId}/${section}`);
-      });
-      document.addEventListener('click', (event) => {
-        if (quickAddMenuEl.classList.contains('hidden')) return;
-        if (event.target.closest('#quickAddMenu') || event.target.closest('#navAddBtn')) return;
-        closeQuickAddMenu();
       });
       dogTypeBtn.addEventListener('click', () => setType('dog'));
       catTypeBtn.addEventListener('click', () => setType('cat'));
       savePetBtn.addEventListener('click', savePet);
       window.addEventListener('hashchange', () => {
-        closeQuickAddMenu();
         renderRoute();
       });
 
