@@ -22,7 +22,7 @@
       }
       body { background: var(--bg); color: var(--text); margin: 0; font-family: system-ui, sans-serif; }
       .card { border-radius: calc(var(--radius) + 2px); padding: 16px 16px 24px; background: transparent; max-width: 520px; margin: 0 auto; box-sizing: border-box; }
-      .card.with-bottom-bar { padding-bottom: 90px; }
+      .card.with-bottom-bar { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
       button { padding: 12px 14px; border-radius: 12px; border: 1px solid transparent; cursor: pointer; }
       .pet-card { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-top: 10px; cursor: pointer; background: var(--card-bg); }
       .pet-type { font-size: 13px; color: var(--hint); }
@@ -194,38 +194,67 @@
       .calendar-more { font-size: 11px; color: var(--hint); }
       .bottomBar {
         position: fixed;
+        width: 100%;
         left: 0;
         right: 0;
         bottom: 0;
         z-index: 30;
-        padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+        padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
         background: rgba(255, 255, 255, .85);
         backdrop-filter: blur(12px);
         border-top: 1px solid rgba(0, 0, 0, .06);
-        display: flex;
-        gap: 10px;
-        justify-content: space-between;
         box-sizing: border-box;
       }
+      .bottomBarInner {
+        display: flex;
+        gap: 10px;
+        width: 100%;
+        max-width: 520px;
+        margin: 0 auto;
+      }
       .btn {
-        height: 44px;
-        border-radius: 14px;
+        height: 46px;
+        border-radius: 16px;
         font-weight: 600;
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        gap: 8px;
         font-size: 15px;
         border: 1px solid transparent;
+        min-width: 0;
+        width: 100%;
+        flex: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
       .btnGhost {
-        background: #F2F2F7;
+        background: rgba(120, 120, 128, .12);
         color: #111;
-        flex: 1;
+        border: 1px solid rgba(0, 0, 0, .06);
       }
       .btnPrimary {
-        background: #1677FF;
+        background: linear-gradient(180deg, #2F8CFF, #1677FF);
         color: #fff;
-        flex: 1.2;
+        box-shadow: 0 10px 24px rgba(22, 119, 255, .22);
+      }
+      .btn .ico {
+        line-height: 1;
+        flex: 0 0 auto;
+      }
+      .btn .txt {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      @media (hover: hover) {
+        .btnGhost:hover { background: rgba(100, 100, 108, .16); }
+        .btnPrimary:hover { background: linear-gradient(180deg, #247EF3, #106EF2); }
+      }
+      .btnGhost:active,
+      .btnPrimary:active {
+        transform: translateY(1px);
       }
       .btn:disabled {
         opacity: .45;
@@ -266,8 +295,10 @@
     </div>
 
     <div id="bottomBar" class="bottomBar hidden">
-      <button class="btn btnGhost" id="btnBack" type="button">← Назад</button>
-      <button class="btn btnPrimary" id="btnAddRecord" type="button">＋ Запись</button>
+      <div class="bottomBarInner">
+        <button class="btn btnGhost" id="btnBack" type="button"><span class="ico">←</span><span class="txt">Назад</span></button>
+        <button class="btn btnPrimary" id="btnAddRecord" type="button"><span class="ico">＋</span><span class="txt">Запись</span></button>
+      </div>
     </div>
 
     <script>
