@@ -127,6 +127,71 @@
         margin-bottom: 12px;
       }
       .route-title { font-size: 14px; color: var(--hint); }
+      .calendar-shell {
+        background: var(--card);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        padding: 14px;
+      }
+      .calendar-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+      .calendar-month { font-size: 18px; font-weight: 700; }
+      .calendar-nav {
+        min-width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: var(--secondary-bg);
+        color: var(--text);
+        padding: 0;
+      }
+      .calendar-weekdays,
+      .calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 6px;
+      }
+      .calendar-weekday {
+        text-align: center;
+        font-size: 12px;
+        color: var(--hint);
+        font-weight: 600;
+        padding: 4px 0;
+      }
+      .calendar-cell {
+        min-height: 84px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 6px;
+        background: color-mix(in srgb, var(--card) 88%, var(--secondary-bg));
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .calendar-cell.muted-day { opacity: .5; }
+      .calendar-day-number { font-size: 12px; font-weight: 700; }
+      .calendar-events {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-height: 0;
+      }
+      .calendar-event {
+        font-size: 11px;
+        line-height: 1.25;
+        border-radius: 6px;
+        padding: 2px 4px;
+        background: color-mix(in srgb, var(--btn) 12%, transparent);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .calendar-more { font-size: 11px; color: var(--hint); }
       .bottomBar {
         position: fixed;
         left: 0;
@@ -1905,12 +1970,10 @@
 
       async function renderCalendarScreen(petId) {
         screenSectionEl.innerHTML = `
-          <div class="route-header"><button class="back-btn" id="backToProfileBtn" type="button">← Назад в профиль</button><span class="route-title">Календарь</span></div>
+          <div class="route-header"><span class="route-title">Календарь</span></div>
           <div id="calendarStatus" class="status hidden"></div>
-          <div id="calendarList" class="summary-card"><div class="muted">Загрузка календаря...</div></div>
+          <div id="calendarList" class="calendar-shell"><div class="muted">Загрузка календаря...</div></div>
         `;
-
-        document.getElementById('backToProfileBtn').addEventListener('click', () => setHash(`#pet/${petId}`));
 
         const listEl = document.getElementById('calendarList');
         const statusEl = document.getElementById('calendarStatus');
@@ -1936,10 +1999,10 @@
             ...feedings.map((item) => ({ date: item.fed_at, title: '🍽️ Кормление' })),
           ]
             .map((item) => {
-              if (!item.date) return { ...item, hasDate: false, ts: Number.NEGATIVE_INFINITY };
+              if (!item.date) return null;
               const ts = new Date(item.date).getTime();
               if (!Number.isFinite(ts)) return null;
-              return { ...item, hasDate: true, ts };
+              return { ...item, ts, dateObj: new Date(ts) };
             })
             .filter(Boolean)
             .sort((a, b) => b.ts - a.ts);
@@ -1949,12 +2012,73 @@
             return;
           }
 
-          listEl.innerHTML = records
-            .map((item) => {
-              const dateLabel = item.hasDate ? formatDateTimeShort(item.date) : 'Без даты';
-              return `<div class="summary-row"><span class="summary-label">${item.title}</span><span class="summary-value">${dateLabel}</span></div>`;
-            })
-            .join('');
+          const weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+          const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+          let monthOffset = 0;
+
+          const toDateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+          const groupedByDay = records.reduce((acc, item) => {
+            const key = toDateKey(item.dateObj);
+            if (!acc.has(key)) acc.set(key, []);
+            acc.get(key).push(item);
+            return acc;
+          }, new Map());
+
+          function buildCalendarGrid(baseDate) {
+            const year = baseDate.getFullYear();
+            const month = baseDate.getMonth();
+            const firstDay = new Date(year, month, 1);
+            const firstWeekday = (firstDay.getDay() + 6) % 7;
+            const gridStart = new Date(year, month, 1 - firstWeekday);
+
+            const cells = [];
+            for (let i = 0; i < 42; i += 1) {
+              const dayDate = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
+              const inCurrentMonth = dayDate.getMonth() === month;
+              const dayRecords = groupedByDay.get(toDateKey(dayDate)) || [];
+              const visible = dayRecords.slice(0, 2);
+              const moreCount = dayRecords.length - visible.length;
+
+              cells.push(`
+                <div class="calendar-cell ${inCurrentMonth ? '' : 'muted-day'}">
+                  <div class="calendar-day-number">${dayDate.getDate()}</div>
+                  <div class="calendar-events">
+                    ${visible.map((entry) => `<div class="calendar-event" title="${entry.title}">${entry.title}</div>`).join('')}
+                    ${moreCount > 0 ? `<div class="calendar-more">+${moreCount}</div>` : ''}
+                  </div>
+                </div>
+              `);
+            }
+
+            return cells.join('');
+          }
+
+          function renderMonth() {
+            const monthDate = new Date();
+            monthDate.setDate(1);
+            monthDate.setMonth(monthDate.getMonth() + monthOffset);
+
+            listEl.innerHTML = `
+              <div class="calendar-toolbar">
+                <button id="calendarPrevMonth" class="calendar-nav" type="button">←</button>
+                <div class="calendar-month">${monthNames[monthDate.getMonth()]} ${monthDate.getFullYear()}</div>
+                <button id="calendarNextMonth" class="calendar-nav" type="button">→</button>
+              </div>
+              <div class="calendar-weekdays">${weekdays.map((day) => `<div class="calendar-weekday">${day}</div>`).join('')}</div>
+              <div class="calendar-grid">${buildCalendarGrid(monthDate)}</div>
+            `;
+
+            document.getElementById('calendarPrevMonth').addEventListener('click', () => {
+              monthOffset -= 1;
+              renderMonth();
+            });
+            document.getElementById('calendarNextMonth').addEventListener('click', () => {
+              monthOffset += 1;
+              renderMonth();
+            });
+          }
+
+          renderMonth();
         } catch (error) {
           statusEl.className = 'status error';
           statusEl.innerText = 'Не удалось загрузить календарь.';
