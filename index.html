@@ -57,9 +57,9 @@
       .pet-avatar-wrap { width: 72px; height: 72px; border-radius: 50%; background: var(--card); display: grid; place-items: center; box-shadow: 0 4px 14px rgba(0, 0, 0, .08); }
       .pet-avatar { width: 44px; height: 44px; object-fit: contain; }
       .pet-name { font-size: 28px; font-weight: 700; margin: 10px 0 6px; line-height: 1.1; }
-      .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 10px; }
+      .chips { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; margin-top: 10px; max-width: 100%; max-height: 72px; overflow: hidden; }
       .chip { padding: 8px 12px; border-radius: 999px; background: rgba(255,255,255,.65); backdrop-filter: blur(6px); font-size: 14px; line-height: 1; color: var(--text); }
-      .chip.muted { color: var(--hint); }
+      .chip.muted { color: var(--hint); background: color-mix(in srgb, var(--card) 80%, var(--hint) 20%); }
       .action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap); }
       .action { min-height: 92px; background: var(--card); border-radius: var(--radius); box-shadow: 0 6px 20px rgba(0, 0, 0, .05); padding: 14px; text-align: left; color: var(--text); display: flex; flex-direction: column; gap: 5px; }
       .action-emoji { font-size: 18px; line-height: 1; }
@@ -573,21 +573,38 @@
         const birthValue = pet.birth_date
           ? formatDateRu(pet.birth_date)
           : (pet.birth_year ? String(pet.birth_year) : '');
+        function isEmpty(v) {
+          if (v === null || v === undefined) return true;
+          const normalized = String(v).trim().toLowerCase();
+          return !normalized || normalized === '—' || normalized === 'unknown' || normalized === 'неизвестно';
+        }
+
+        function chip(label, value, icon) {
+          const empty = isEmpty(value);
+          const fallback = {
+            'Пол': 'не указан',
+            'Рождение': 'не указано',
+            'Чип': 'не указан',
+          };
+
+          if (label === 'Тип') {
+            const typeText = String(value || '').trim();
+            return { text: `${icon ? `${icon} ` : ''}${typeText}`.trim(), muted: false };
+          }
+
+          const safeValue = empty ? fallback[label] : String(value).trim();
+          return {
+            text: `${icon ? `${icon} ` : ''}${label}: ${safeValue}`,
+            muted: empty,
+          };
+        }
+
         const chips = [
-          { text: typeLabel[pet.type] || pet.type, muted: false },
+          chip('Тип', typeLabel[pet.type] || pet.type, ''),
+          chip('Пол', sexLabel[pet.sex] || pet.sex, '⚥'),
+          chip('Рождение', birthValue, '📅'),
+          chip('Чип', pet.chip_number, '🏷️'),
         ];
-
-        if (pet.sex && pet.sex !== 'unknown') {
-          chips.push({ text: `Пол: ${sexLabel[pet.sex] || pet.sex}`, muted: false });
-        }
-
-        if (birthValue) {
-          chips.push({ text: `Рождение: ${birthValue}`, muted: false });
-        }
-
-        if (pet.chip_number) {
-          chips.push({ text: `Чип: ${pet.chip_number}`, muted: false });
-        }
 
         const chipsHtml = chips
           .map(({ text, muted }) => `<span class="chip${muted ? ' muted' : ''}">${text}</span>`)
