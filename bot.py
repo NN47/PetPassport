@@ -118,10 +118,12 @@ def ensure_feedings_table() -> None:
               id SERIAL PRIMARY KEY,
               pet_id INTEGER NOT NULL REFERENCES pets(id) ON DELETE CASCADE,
               fed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+              food TEXT,
               notes TEXT
             )
             """
         )
+        db_cursor.execute("ALTER TABLE feedings ADD COLUMN IF NOT EXISTS food TEXT")
     conn.commit()
 
 
@@ -2184,7 +2186,7 @@ async def api_get_pet_feedings(request: web.Request) -> web.Response:
     with conn.cursor() as db_cursor:
         db_cursor.execute(
             """
-            SELECT id, fed_at, notes
+            SELECT id, fed_at, food, notes
             FROM feedings
             WHERE pet_id = %s
             ORDER BY fed_at DESC, id DESC
@@ -2197,7 +2199,8 @@ async def api_get_pet_feedings(request: web.Request) -> web.Response:
         {
             "id": row[0],
             "fed_at": row[1].isoformat() if row[1] else None,
-            "notes": row[2],
+            "food": row[2],
+            "notes": row[3],
         }
         for row in rows
     ]
@@ -2238,6 +2241,11 @@ async def api_create_pet_feeding(request: web.Request) -> web.Response:
         except ValueError:
             return web.json_response({"error": "fed_at must be ISO datetime string"}, status=400)
 
+    food = payload.get("food")
+    if not isinstance(food, str) or not food.strip():
+        return web.json_response({"error": "food is required"}, status=400)
+    prepared_food = food.strip()
+
     notes = payload.get("notes")
     if notes is None:
         prepared_notes = None
@@ -2250,11 +2258,11 @@ async def api_create_pet_feeding(request: web.Request) -> web.Response:
     with conn.cursor() as db_cursor:
         db_cursor.execute(
             """
-            INSERT INTO feedings (pet_id, fed_at, notes)
-            VALUES (%s, %s, %s)
-            RETURNING id, fed_at, notes
+            INSERT INTO feedings (pet_id, fed_at, food, notes)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id, fed_at, food, notes
             """,
-            (owned_pet_id, fed_at, prepared_notes),
+            (owned_pet_id, fed_at, prepared_food, prepared_notes),
         )
         row = db_cursor.fetchone()
     conn.commit()
@@ -2262,7 +2270,8 @@ async def api_create_pet_feeding(request: web.Request) -> web.Response:
     feeding_payload = {
         "id": row[0],
         "fed_at": row[1].isoformat() if row[1] else None,
-        "notes": row[2],
+        "food": row[2],
+        "notes": row[3],
     }
     return web.json_response({"ok": True, "feeding": feeding_payload})
 
