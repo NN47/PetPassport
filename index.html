@@ -247,6 +247,7 @@
       </div>
 
       <div id="screenAdd" class="hidden">
+        <div class="row"><button class="back-btn" id="backFromAddBtn" type="button">← Назад</button></div>
         <h3>Добавить питомца</h3>
         <div id="createPetForm">
           <input id="petNameInput" class="field" type="text" placeholder="Имя питомца" maxlength="64" />
@@ -267,7 +268,7 @@
 
     <div id="bottomBar" class="bottomBar hidden">
       <button class="btn btnGhost" id="btnBack" type="button">← Назад</button>
-      <button class="btn btnPrimary" id="btnAddRecord" type="button">＋ Запись</button>
+      <button class="btn btnPrimary" id="btnCalendar" type="button">🗓️ Календарь</button>
     </div>
 
     <script>
@@ -311,7 +312,8 @@
       const cardEl = document.querySelector('.card');
       const bottomBarEl = document.getElementById('bottomBar');
       const btnBack = document.getElementById('btnBack');
-      const btnAddRecord = document.getElementById('btnAddRecord');
+      const btnCalendar = document.getElementById('btnCalendar');
+      const backFromAddBtn = document.getElementById('backFromAddBtn');
 
       const typeLabel = { dog: '🐶 Собакен', cat: '🐱 Котофей' };
       const sexLabel = { male: 'Самец', female: 'Самка', unknown: 'Неизвестно' };
@@ -431,7 +433,7 @@
         bottomBarEl.classList.toggle('hidden', !isPetProfileRoute);
         cardEl.classList.toggle('with-bottom-bar', isPetProfileRoute);
         btnBack.disabled = !isPetProfileRoute;
-        btnAddRecord.disabled = !isPetProfileRoute;
+        btnCalendar.disabled = !isPetProfileRoute;
       }
 
       function getCurrentPetRoute() {
@@ -2519,6 +2521,7 @@
 
       async function renderRoute() {
         if (!tgInitData) {
+          updateBottomBar('list');
           showScreen('list');
           return;
         }
@@ -2606,14 +2609,14 @@
           setHash('#list');
         }
       });
-      btnAddRecord.addEventListener('click', () => {
+      btnCalendar.addEventListener('click', () => {
         const petRoute = getCurrentPetRoute();
         if (!petRoute) {
-          alert('Скоро: добавление записи');
           return;
         }
         setHash(`#pet/${petRoute.petId}/calendar`);
       });
+      backFromAddBtn.addEventListener('click', () => setHash('#list'));
       dogTypeBtn.addEventListener('click', () => setType('dog'));
       catTypeBtn.addEventListener('click', () => setType('cat'));
       savePetBtn.addEventListener('click', savePet);
