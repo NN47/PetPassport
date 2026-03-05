@@ -530,6 +530,186 @@ async def api_get_pet(request: web.Request) -> web.Response:
     return web.json_response({"pet": pet_payload})
 
 
+def _iso_value(raw_value: object) -> str | None:
+    if raw_value is None:
+        return None
+    if hasattr(raw_value, "isoformat"):
+        return raw_value.isoformat()
+    return str(raw_value)
+
+
+async def api_get_pet_summary(request: web.Request) -> web.Response:
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
+
+    pet_id_raw = request.match_info.get("pet_id", "")
+    try:
+        pet_id = int(pet_id_raw)
+    except ValueError:
+        return web.json_response({"error": "pet_id must be an integer"}, status=400)
+
+    owned_pet_id = get_owned_pet_id(tg_user_id, pet_id)
+    if owned_pet_id is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    weights_columns = get_weights_columns()
+    weight_date_column, weight_value_column = get_weights_mapping(weights_columns)
+
+    walks_columns = get_walks_columns()
+    walk_started_column, walk_duration_column = get_walks_mapping(walks_columns)
+
+    events_columns = get_events_columns()
+    event_date_column = get_events_date_column(events_columns)
+    event_type_select = "type" if "type" in events_columns else "NULL AS type"
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            SELECT id, name, type
+            FROM pets
+            WHERE id = %s
+            """,
+            (owned_pet_id,),
+        )
+        pet_row = db_cursor.fetchone()
+
+        db_cursor.execute(
+            f"""
+            SELECT {weight_date_column}, {weight_value_column}
+            FROM weights
+            WHERE pet_id = %s
+            ORDER BY {weight_date_column} DESC, id DESC
+            LIMIT 1
+            """,
+            (owned_pet_id,),
+        )
+        latest_weight_row = db_cursor.fetchone()
+
+        db_cursor.execute(
+            """
+            SELECT date_given, vaccine_name, next_due
+            FROM vaccinations
+            WHERE pet_id = %s
+            ORDER BY date_given DESC, id DESC
+            LIMIT 1
+            """,
+            (owned_pet_id,),
+        )
+        latest_vaccination_row = db_cursor.fetchone()
+
+        db_cursor.execute(
+            """
+            SELECT date_given, product_name, next_due
+            FROM treatments
+            WHERE pet_id = %s AND type = 'fleas'
+            ORDER BY date_given DESC, id DESC
+            LIMIT 1
+            """,
+            (owned_pet_id,),
+        )
+        latest_treatment_fleas_row = db_cursor.fetchone()
+
+        db_cursor.execute(
+            """
+            SELECT date_given, product_name, next_due
+            FROM treatments
+            WHERE pet_id = %s AND type = 'worms'
+            ORDER BY date_given DESC, id DESC
+            LIMIT 1
+            """,
+            (owned_pet_id,),
+        )
+        latest_treatment_worms_row = db_cursor.fetchone()
+
+        db_cursor.execute(
+            f"""
+            SELECT {walk_started_column}, {walk_duration_column}
+            FROM walks
+            WHERE pet_id = %s
+            ORDER BY {walk_started_column} DESC, id DESC
+            LIMIT 1
+            """,
+            (owned_pet_id,),
+        )
+        latest_walk_row = db_cursor.fetchone()
+
+        db_cursor.execute(
+            f"""
+            SELECT {event_date_column}, {event_type_select}, title
+            FROM events
+            WHERE pet_id = %s
+            ORDER BY {event_date_column} DESC, id DESC
+            LIMIT 1
+            """,
+            (owned_pet_id,),
+        )
+        latest_event_row = db_cursor.fetchone()
+
+    if pet_row is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    latest_weight = None
+    if latest_weight_row is not None:
+        latest_weight = {
+            "date": _iso_value(latest_weight_row[0]),
+            "weight": float(latest_weight_row[1]) if latest_weight_row[1] is not None else None,
+        }
+
+    latest_vaccination = None
+    if latest_vaccination_row is not None:
+        latest_vaccination = {
+            "date_given": _iso_value(latest_vaccination_row[0]),
+            "vaccine_name": latest_vaccination_row[1],
+            "next_due": _iso_value(latest_vaccination_row[2]),
+        }
+
+    latest_treatment_fleas = None
+    if latest_treatment_fleas_row is not None:
+        latest_treatment_fleas = {
+            "date_given": _iso_value(latest_treatment_fleas_row[0]),
+            "product_name": latest_treatment_fleas_row[1],
+            "next_due": _iso_value(latest_treatment_fleas_row[2]),
+        }
+
+    latest_treatment_worms = None
+    if latest_treatment_worms_row is not None:
+        latest_treatment_worms = {
+            "date_given": _iso_value(latest_treatment_worms_row[0]),
+            "product_name": latest_treatment_worms_row[1],
+            "next_due": _iso_value(latest_treatment_worms_row[2]),
+        }
+
+    latest_walk = None
+    if latest_walk_row is not None:
+        latest_walk = {
+            "started_at": _iso_value(latest_walk_row[0]),
+            "duration_min": int(latest_walk_row[1]) if latest_walk_row[1] is not None else None,
+        }
+
+    latest_event = None
+    if latest_event_row is not None:
+        latest_event = {
+            "event_date": _iso_value(latest_event_row[0]),
+            "type": latest_event_row[1],
+            "title": latest_event_row[2],
+        }
+
+    return web.json_response(
+        {
+            "pet": {"id": pet_row[0], "name": pet_row[1], "type": pet_row[2]},
+            "latest_weight": latest_weight,
+            "latest_vaccination": latest_vaccination,
+            "latest_treatment_fleas": latest_treatment_fleas,
+            "latest_treatment_worms": latest_treatment_worms,
+            "latest_walk": latest_walk,
+            "latest_event": latest_event,
+        }
+    )
+
+
 async def api_patch_pet(request: web.Request) -> web.Response:
     auth_context = get_tg_user_id(request)
     if auth_context is None:
@@ -1351,6 +1531,7 @@ async def start_web_server() -> None:
     app.router.add_get("/api/pets", api_get_pets)
     app.router.add_post("/api/pets", api_create_pet)
     app.router.add_get("/api/pets/{pet_id}", api_get_pet)
+    app.router.add_get("/api/pets/{pet_id}/summary", api_get_pet_summary)
     app.router.add_patch("/api/pets/{pet_id}", api_patch_pet)
     app.router.add_get("/api/pets/{pet_id}/vaccinations", api_get_pet_vaccinations)
     app.router.add_post("/api/pets/{pet_id}/vaccinations", api_create_pet_vaccination)
