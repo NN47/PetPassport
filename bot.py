@@ -5,6 +5,7 @@ import hmac
 import json
 import time
 from datetime import date, datetime
+from pathlib import Path
 from urllib.parse import parse_qsl
 
 import psycopg2
@@ -18,6 +19,8 @@ from aiohttp import web
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 WEBAPP_URL = "https://petpass-aerc.onrender.com/"
+BASE_DIR = Path(__file__).parent
+ASSETS_DIR = BASE_DIR / "assets"
 
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN is not set")
@@ -1561,6 +1564,7 @@ async def start_web_server() -> None:
 
     app = web.Application()
     app.router.add_get("/", lambda request: web.FileResponse("index.html"))
+    app.router.add_static("/assets/", path=ASSETS_DIR, name="assets")
     app.router.add_get("/health", health)
     app.router.add_post("/api/auth", auth_handler)
     app.router.add_get("/api/pets", api_get_pets)
