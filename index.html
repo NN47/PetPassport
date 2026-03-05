@@ -126,6 +126,80 @@
         margin-bottom: 12px;
       }
       .route-title { font-size: 14px; color: var(--hint); }
+      .calendar-wrap {
+        background: var(--card);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        padding: 12px;
+      }
+      .calendar-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .calendar-title { font-size: 16px; font-weight: 700; }
+      .calendar-nav-btn {
+        min-width: 34px;
+        min-height: 34px;
+        padding: 0;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: var(--secondary-bg);
+        color: var(--text);
+        font-size: 18px;
+      }
+      .calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 6px;
+      }
+      .calendar-weekday {
+        text-align: center;
+        font-size: 12px;
+        color: var(--hint);
+        font-weight: 600;
+      }
+      .calendar-day {
+        min-height: 92px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        padding: 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        background: var(--secondary-bg);
+      }
+      .calendar-day.outside { opacity: .5; }
+      .calendar-day.today {
+        border-color: color-mix(in srgb, var(--btn) 46%, var(--border));
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--btn) 26%, transparent);
+      }
+      .calendar-day-num {
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .calendar-events {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        overflow: hidden;
+      }
+      .calendar-event {
+        font-size: 11px;
+        line-height: 1.25;
+        padding: 2px 4px;
+        border-radius: 6px;
+        background: color-mix(in srgb, var(--btn) 14%, transparent);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .calendar-more {
+        font-size: 11px;
+        color: var(--hint);
+      }
       .bottom-bar {
         position: fixed;
         left: 0;
@@ -1913,12 +1987,10 @@
 
       async function renderCalendarScreen(petId) {
         screenSectionEl.innerHTML = `
-          <div class="route-header"><button class="back-btn" id="backToProfileBtn" type="button">← Назад в профиль</button><span class="route-title">Календарь</span></div>
+          <div class="route-header"><span class="route-title">Календарь</span></div>
           <div id="calendarStatus" class="status hidden"></div>
-          <div id="calendarList" class="summary-card"><div class="muted">Загрузка календаря...</div></div>
+          <div id="calendarList" class="calendar-wrap"><div class="muted">Загрузка календаря...</div></div>
         `;
-
-        document.getElementById('backToProfileBtn').addEventListener('click', () => setHash(`#pet/${petId}`));
 
         const listEl = document.getElementById('calendarList');
         const statusEl = document.getElementById('calendarStatus');
@@ -1957,12 +2029,70 @@
             return;
           }
 
-          listEl.innerHTML = records
-            .map((item) => {
-              const dateLabel = item.hasDate ? formatDateTimeShort(item.date) : 'Без даты';
-              return `<div class="summary-row"><span class="summary-label">${item.title}</span><span class="summary-value">${dateLabel}</span></div>`;
-            })
-            .join('');
+          const weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+          const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+          const monthState = { date: new Date(new Date().getFullYear(), new Date().getMonth(), 1) };
+
+          const renderMonth = () => {
+            const monthStart = new Date(monthState.date.getFullYear(), monthState.date.getMonth(), 1);
+            const firstWeekDay = (monthStart.getDay() + 6) % 7;
+            const gridStart = new Date(monthStart);
+            gridStart.setDate(monthStart.getDate() - firstWeekDay);
+
+            const eventsByDay = records.reduce((acc, item) => {
+              const date = new Date(item.ts);
+              const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+              if (!acc[key]) acc[key] = [];
+              acc[key].push(item);
+              return acc;
+            }, {});
+
+            let daysHtml = '';
+            for (let i = 0; i < 42; i += 1) {
+              const dayDate = new Date(gridStart);
+              dayDate.setDate(gridStart.getDate() + i);
+              const key = `${dayDate.getFullYear()}-${dayDate.getMonth()}-${dayDate.getDate()}`;
+              const dayEvents = eventsByDay[key] || [];
+              const isOutside = dayDate.getMonth() !== monthState.date.getMonth();
+              const now = new Date();
+              const isToday = dayDate.getDate() === now.getDate() && dayDate.getMonth() === now.getMonth() && dayDate.getFullYear() === now.getFullYear();
+              const visibleEvents = dayEvents.slice(0, 2);
+              const hiddenCount = dayEvents.length - visibleEvents.length;
+
+              daysHtml += `
+                <div class="calendar-day${isOutside ? ' outside' : ''}${isToday ? ' today' : ''}">
+                  <div class="calendar-day-num">${dayDate.getDate()}</div>
+                  <div class="calendar-events">
+                    ${visibleEvents.map((eventItem) => `<div class="calendar-event" title="${eventItem.title}">${eventItem.title}</div>`).join('')}
+                    ${hiddenCount > 0 ? `<div class="calendar-more">+${hiddenCount}</div>` : ''}
+                  </div>
+                </div>
+              `;
+            }
+
+            listEl.innerHTML = `
+              <div class="calendar-head">
+                <button id="calendarPrevBtn" class="calendar-nav-btn" type="button">‹</button>
+                <div class="calendar-title">${monthNames[monthState.date.getMonth()]} ${monthState.date.getFullYear()}</div>
+                <button id="calendarNextBtn" class="calendar-nav-btn" type="button">›</button>
+              </div>
+              <div class="calendar-grid">${weekdays.map((day) => `<div class="calendar-weekday">${day}</div>`).join('')}</div>
+              <div class="calendar-grid">${daysHtml}</div>
+            `;
+
+            const prevBtn = document.getElementById('calendarPrevBtn');
+            const nextBtn = document.getElementById('calendarNextBtn');
+            prevBtn.addEventListener('click', () => {
+              monthState.date = new Date(monthState.date.getFullYear(), monthState.date.getMonth() - 1, 1);
+              renderMonth();
+            });
+            nextBtn.addEventListener('click', () => {
+              monthState.date = new Date(monthState.date.getFullYear(), monthState.date.getMonth() + 1, 1);
+              renderMonth();
+            });
+          };
+
+          renderMonth();
         } catch (error) {
           statusEl.className = 'status error';
           statusEl.innerText = 'Не удалось загрузить календарь.';
