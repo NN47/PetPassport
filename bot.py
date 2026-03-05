@@ -40,6 +40,7 @@ kb = InlineKeyboardMarkup(
 
 _db_conn = None
 _pets_columns_cache: set[str] | None = None
+_weights_columns_cache: set[str] | None = None
 
 
 def get_db_connection():
@@ -81,6 +82,45 @@ def get_pets_columns() -> set[str]:
 
     _pets_columns_cache = {row[0] for row in rows}
     return _pets_columns_cache
+
+
+def get_weights_columns() -> set[str]:
+    global _weights_columns_cache
+
+    if _weights_columns_cache is not None:
+        return _weights_columns_cache
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'weights'
+            """
+        )
+        rows = db_cursor.fetchall()
+
+    _weights_columns_cache = {row[0] for row in rows}
+    return _weights_columns_cache
+
+
+def get_weights_mapping(columns: set[str]) -> tuple[str, str]:
+    if "date_recorded" in columns:
+        date_column = "date_recorded"
+    elif "measured_at" in columns:
+        date_column = "measured_at"
+    else:
+        raise RuntimeError("weights table is missing date column")
+
+    if "weight" in columns:
+        weight_column = "weight"
+    elif "weight_kg" in columns:
+        weight_column = "weight_kg"
+    else:
+        raise RuntimeError("weights table is missing weight column")
+
+    return date_column, weight_column
 
 
 def validate_init_data(init_data: str) -> dict:
@@ -658,6 +698,132 @@ async def api_create_pet_vaccination(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "vaccination": vaccination_payload})
 
 
+async def api_get_pet_weights(request: web.Request) -> web.Response:
+    try:
+        tg_user_id = get_tg_user_id_from_header(request)
+    except ValueError as exc:
+        return web.json_response({"error": str(exc)}, status=400)
+
+    pet_id_raw = request.match_info.get("pet_id", "")
+    try:
+        pet_id = int(pet_id_raw)
+    except ValueError:
+        return web.json_response({"error": "pet_id must be an integer"}, status=400)
+
+    owned_pet_id = get_owned_pet_id(tg_user_id, pet_id)
+    if owned_pet_id is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    weights_columns = get_weights_columns()
+    date_column, weight_column = get_weights_mapping(weights_columns)
+    notes_select = "notes" if "notes" in weights_columns else "NULL AS notes"
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            f"""
+            SELECT id, {date_column}, {weight_column}, {notes_select}
+            FROM weights
+            WHERE pet_id = %s
+            ORDER BY {date_column} DESC, id DESC
+            """,
+            (owned_pet_id,),
+        )
+        rows = db_cursor.fetchall()
+
+    weights = [
+        {
+            "id": row[0],
+            "date": row[1].isoformat(),
+            "weight": float(row[2]),
+            "notes": row[3],
+        }
+        for row in rows
+    ]
+    return web.json_response({"weights": weights})
+
+
+async def api_create_pet_weight(request: web.Request) -> web.Response:
+    try:
+        tg_user_id = get_tg_user_id_from_header(request)
+    except ValueError as exc:
+        return web.json_response({"error": str(exc)}, status=400)
+
+    pet_id_raw = request.match_info.get("pet_id", "")
+    try:
+        pet_id = int(pet_id_raw)
+    except ValueError:
+        return web.json_response({"error": "pet_id must be an integer"}, status=400)
+
+    owned_pet_id = get_owned_pet_id(tg_user_id, pet_id)
+    if owned_pet_id is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    if not isinstance(payload, dict):
+        return web.json_response({"error": "JSON body must be an object"}, status=400)
+
+    date_raw = payload.get("date")
+    if not isinstance(date_raw, str):
+        return web.json_response({"error": "date is required"}, status=400)
+
+    try:
+        measured_date = date.fromisoformat(date_raw)
+    except ValueError:
+        return web.json_response({"error": "date must be YYYY-MM-DD"}, status=400)
+
+    raw_weight = payload.get("weight")
+    if not isinstance(raw_weight, (int, float)):
+        return web.json_response({"error": "weight is required"}, status=400)
+
+    weight_value = float(raw_weight)
+
+    notes = payload.get("notes")
+    if notes is None:
+        prepared_notes = None
+    elif isinstance(notes, str):
+        prepared_notes = notes.strip() or None
+    else:
+        return web.json_response({"error": "notes must be string"}, status=400)
+
+    weights_columns = get_weights_columns()
+    date_column, weight_column = get_weights_mapping(weights_columns)
+
+    insert_columns = ["pet_id", date_column, weight_column]
+    insert_values = [owned_pet_id, measured_date, weight_value]
+    if "notes" in weights_columns:
+        insert_columns.append("notes")
+        insert_values.append(prepared_notes)
+
+    returning_notes = "notes" if "notes" in weights_columns else "NULL AS notes"
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        placeholders = ", ".join(["%s"] * len(insert_columns))
+        db_cursor.execute(
+            f"""
+            INSERT INTO weights ({', '.join(insert_columns)})
+            VALUES ({placeholders})
+            RETURNING id, {date_column}, {weight_column}, {returning_notes}
+            """,
+            tuple(insert_values),
+        )
+        row = db_cursor.fetchone()
+    conn.commit()
+
+    weight_payload = {
+        "id": row[0],
+        "date": row[1].isoformat(),
+        "weight": float(row[2]),
+        "notes": row[3],
+    }
+    return web.json_response({"ok": True, "weight": weight_payload})
+
+
 def validate_treatment_type(raw_type: object) -> str | None:
     if not isinstance(raw_type, str):
         return None
@@ -814,6 +980,8 @@ async def start_web_server() -> None:
     app.router.add_patch("/api/pets/{pet_id}", api_patch_pet)
     app.router.add_get("/api/pets/{pet_id}/vaccinations", api_get_pet_vaccinations)
     app.router.add_post("/api/pets/{pet_id}/vaccinations", api_create_pet_vaccination)
+    app.router.add_get("/api/pets/{pet_id}/weights", api_get_pet_weights)
+    app.router.add_post("/api/pets/{pet_id}/weights", api_create_pet_weight)
     app.router.add_get("/api/pets/{pet_id}/treatments", api_get_pet_treatments)
     app.router.add_post("/api/pets/{pet_id}/treatments", api_create_pet_treatment)
 

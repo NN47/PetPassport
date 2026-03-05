@@ -95,6 +95,7 @@
         vaccinations: 'Вакцинация',
         treatments: 'Обработка',
         weight: 'Вес',
+        weights: 'Вес',
         walk: 'Прогулка',
         events: 'События',
       };
@@ -208,7 +209,7 @@
                 <button class="subtile" data-section="treatments-worms">от глистов</button>
               </div>
             </div>
-            <button class="tile" data-section="weight">Вес</button>
+            <button class="tile" data-section="weights">Вес</button>
             <button class="tile" data-section="walk">Прогулка</button>
             <button class="tile" data-section="events">События</button>
           </div>
@@ -251,6 +252,16 @@
 
         if (section === 'treatments-worms') {
           renderTreatmentsScreen(petId, 'worms');
+          return;
+        }
+
+        if (section === 'weight') {
+          setHash(`#pet/${petId}/weights`);
+          return;
+        }
+
+        if (section === 'weights') {
+          renderWeightsScreen(petId);
           return;
         }
 
@@ -667,6 +678,194 @@
           const statusCodeText = error.status ? ` (${error.status})` : '';
           setTreatmentStatus('error', `Ошибка${statusCodeText}: ${error.message || 'не удалось загрузить список обработок.'}`);
           renderTreatmentsList([]);
+        }
+      }
+
+      async function fetchWeights(petId) {
+        const response = await fetch(`/api/pets/${petId}/weights`, {
+          method: 'GET',
+          headers: getApiHeaders(),
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          const error = new Error(errData.error || 'Не удалось загрузить вес');
+          error.status = response.status;
+          throw error;
+        }
+
+        const data = await response.json();
+        return Array.isArray(data.weights) ? data.weights : [];
+      }
+
+      async function createWeight(petId, payload) {
+        const response = await fetch(`/api/pets/${petId}/weights`, {
+          method: 'POST',
+          headers: getApiHeaders(),
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          const error = new Error(errData.error || 'Не удалось сохранить вес');
+          error.status = response.status;
+          throw error;
+        }
+
+        return response.json();
+      }
+
+      function setWeightStatus(type, message) {
+        const statusEl = document.getElementById('weightStatus');
+        if (!statusEl) return;
+        statusEl.className = `status ${type}`;
+        statusEl.innerText = message;
+        statusEl.classList.remove('hidden');
+      }
+
+      function hideWeightStatus() {
+        const statusEl = document.getElementById('weightStatus');
+        if (!statusEl) return;
+        statusEl.classList.add('hidden');
+      }
+
+      function resetWeightForm() {
+        document.getElementById('weightDate').value = '';
+        document.getElementById('weightValue').value = '';
+        document.getElementById('weightNotes').value = '';
+      }
+
+      function toggleWeightForm(show) {
+        const formEl = document.getElementById('weightForm');
+        const addBtn = document.getElementById('showWeightFormBtn');
+        if (!formEl || !addBtn) return;
+        formEl.classList.toggle('hidden', !show);
+        addBtn.classList.toggle('hidden', show);
+      }
+
+      function renderWeightsList(weights) {
+        const summaryEl = document.getElementById('weightSummary');
+        const trendEl = document.getElementById('weightTrend');
+        const listEl = document.getElementById('weightsList');
+        if (!listEl || !summaryEl || !trendEl) return;
+
+        if (!weights.length) {
+          summaryEl.innerHTML = '<div class="muted">Текущий вес: —</div>';
+          trendEl.innerHTML = '';
+          listEl.innerHTML = '<p class="muted">Записей веса пока нет.</p>';
+          return;
+        }
+
+        const latest = weights[0];
+        summaryEl.innerHTML = `<strong>Текущий вес: ${Number(latest.weight).toFixed(1)} кг</strong> <span class="muted">(${formatDateRu(latest.date)})</span>`;
+
+        const trendValues = weights.slice(0, 5).map((item) => Number(item.weight).toFixed(1));
+        trendEl.innerHTML = `<div class="muted">Последние значения: ${trendValues.join(' → ')}</div>`;
+
+        listEl.innerHTML = weights
+          .map((item) => {
+            const notesText = item.notes
+              ? `<div class="muted">Заметка: ${item.notes}</div>`
+              : '';
+
+            return `
+              <div class="pet-card">
+                <strong>${formatDateRu(item.date)} — ${Number(item.weight).toFixed(1)} кг</strong>
+                ${notesText}
+              </div>
+            `;
+          })
+          .join('');
+      }
+
+      async function renderWeightsScreen(petId) {
+        screenSectionEl.innerHTML = `
+          <div class="row"><button class="back-btn" id="backToProfileBtn">← Назад</button></div>
+          <h3>Вес</h3>
+          <div id="weightStatus" class="status hidden"></div>
+          <div id="weightSummary" style="margin-bottom: 8px;"></div>
+          <div id="weightTrend" style="margin-bottom: 10px;"></div>
+          <div id="weightsList"></div>
+
+          <div class="row">
+            <button id="showWeightFormBtn" type="button" class="primary">+ Добавить вес</button>
+          </div>
+
+          <div id="weightForm" class="hidden">
+            <label class="label" for="weightDate">Дата</label>
+            <input id="weightDate" class="field" type="date" />
+
+            <label class="label" for="weightValue">Вес (кг)</label>
+            <input id="weightValue" class="field" type="number" step="0.1" min="0" />
+
+            <label class="label" for="weightNotes">Заметка (опционально)</label>
+            <textarea id="weightNotes" class="field" rows="3" maxlength="500"></textarea>
+
+            <div class="row">
+              <button id="saveWeightBtn" type="button" class="primary">Сохранить</button>
+              <button id="cancelWeightBtn" type="button" class="back-btn">Отмена</button>
+            </div>
+          </div>
+        `;
+
+        const refreshWeights = async () => {
+          const weights = await fetchWeights(petId);
+          renderWeightsList(weights);
+        };
+
+        document.getElementById('backToProfileBtn').addEventListener('click', () => setHash(`#pet/${petId}`));
+        document.getElementById('showWeightFormBtn').addEventListener('click', () => {
+          hideWeightStatus();
+          toggleWeightForm(true);
+        });
+        document.getElementById('cancelWeightBtn').addEventListener('click', () => {
+          resetWeightForm();
+          hideWeightStatus();
+          toggleWeightForm(false);
+        });
+
+        document.getElementById('saveWeightBtn').addEventListener('click', async () => {
+          const saveBtn = document.getElementById('saveWeightBtn');
+          const weightDate = document.getElementById('weightDate').value;
+          const weightValueRaw = document.getElementById('weightValue').value;
+          const notes = document.getElementById('weightNotes').value.trim();
+
+          if (!weightDate) {
+            setWeightStatus('error', 'Укажите дату измерения.');
+            return;
+          }
+
+          const weightValue = Number(weightValueRaw);
+          if (!Number.isFinite(weightValue) || weightValue <= 0) {
+            setWeightStatus('error', 'Укажите корректный вес в кг.');
+            return;
+          }
+
+          saveBtn.disabled = true;
+          try {
+            await createWeight(petId, {
+              date: weightDate,
+              weight: weightValue,
+              notes: notes || null,
+            });
+            setWeightStatus('success', 'Запись веса сохранена ✅');
+            resetWeightForm();
+            toggleWeightForm(false);
+            await refreshWeights();
+          } catch (error) {
+            const statusCodeText = error.status ? ` (${error.status})` : '';
+            setWeightStatus('error', `Ошибка${statusCodeText}: ${error.message || 'не удалось сохранить запись.'}`);
+          } finally {
+            saveBtn.disabled = false;
+          }
+        });
+
+        try {
+          await refreshWeights();
+        } catch (error) {
+          const statusCodeText = error.status ? ` (${error.status})` : '';
+          setWeightStatus('error', `Ошибка${statusCodeText}: ${error.message || 'не удалось загрузить список веса.'}`);
+          renderWeightsList([]);
         }
       }
 
