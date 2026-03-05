@@ -4,7 +4,7 @@ import hashlib
 import hmac
 import json
 import time
-from datetime import date
+from datetime import date, datetime
 from urllib.parse import parse_qsl
 
 import psycopg2
@@ -41,6 +41,7 @@ kb = InlineKeyboardMarkup(
 _db_conn = None
 _pets_columns_cache: set[str] | None = None
 _weights_columns_cache: set[str] | None = None
+_walks_columns_cache: set[str] | None = None
 
 
 def get_db_connection():
@@ -122,6 +123,62 @@ def get_weights_mapping(columns: set[str]) -> tuple[str, str]:
 
     return date_column, weight_column
 
+
+
+
+def get_walks_columns() -> set[str]:
+    global _walks_columns_cache
+
+    if _walks_columns_cache is not None:
+        return _walks_columns_cache
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'walks'
+            """
+        )
+        rows = db_cursor.fetchall()
+
+    _walks_columns_cache = {row[0] for row in rows}
+    return _walks_columns_cache
+
+
+def get_walks_mapping(columns: set[str]) -> tuple[str, str]:
+    if "started_at" in columns:
+        started_column = "started_at"
+    elif "walk_date" in columns:
+        started_column = "walk_date"
+    else:
+        raise RuntimeError("walks table is missing started_at/walk_date column")
+
+    if "duration_min" in columns:
+        duration_column = "duration_min"
+    elif "duration_minutes" in columns:
+        duration_column = "duration_minutes"
+    else:
+        raise RuntimeError("walks table is missing duration_min/duration_minutes column")
+
+    return started_column, duration_column
+
+
+def parse_walk_started_at(raw_started_at: object) -> datetime | None:
+    if not isinstance(raw_started_at, str):
+        return None
+
+    started_at_str = raw_started_at.strip()
+    if not started_at_str:
+        return None
+
+    normalized = started_at_str.replace("Z", "+00:00")
+
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
 
 def validate_init_data(init_data: str) -> dict:
     if not init_data:
@@ -824,6 +881,136 @@ async def api_create_pet_weight(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "weight": weight_payload})
 
 
+
+
+async def api_get_pet_walks(request: web.Request) -> web.Response:
+    try:
+        tg_user_id = get_tg_user_id_from_header(request)
+    except ValueError as exc:
+        return web.json_response({"error": str(exc)}, status=400)
+
+    pet_id_raw = request.match_info.get("pet_id", "")
+    try:
+        pet_id = int(pet_id_raw)
+    except ValueError:
+        return web.json_response({"error": "pet_id must be an integer"}, status=400)
+
+    owned_pet_id = get_owned_pet_id(tg_user_id, pet_id)
+    if owned_pet_id is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    walks_columns = get_walks_columns()
+    started_column, duration_column = get_walks_mapping(walks_columns)
+    notes_select = "notes" if "notes" in walks_columns else "NULL AS notes"
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            f"""
+            SELECT id, {started_column}, {duration_column}, {notes_select}
+            FROM walks
+            WHERE pet_id = %s
+            ORDER BY {started_column} DESC, id DESC
+            """,
+            (owned_pet_id,),
+        )
+        rows = db_cursor.fetchall()
+
+    walks = [
+        {
+            "id": row[0],
+            "started_at": row[1].isoformat() if row[1] else None,
+            "duration_min": int(row[2]),
+            "notes": row[3],
+        }
+        for row in rows
+    ]
+    return web.json_response({"walks": walks})
+
+
+async def api_create_pet_walk(request: web.Request) -> web.Response:
+    try:
+        tg_user_id = get_tg_user_id_from_header(request)
+    except ValueError as exc:
+        return web.json_response({"error": str(exc)}, status=400)
+
+    pet_id_raw = request.match_info.get("pet_id", "")
+    try:
+        pet_id = int(pet_id_raw)
+    except ValueError:
+        return web.json_response({"error": "pet_id must be an integer"}, status=400)
+
+    owned_pet_id = get_owned_pet_id(tg_user_id, pet_id)
+    if owned_pet_id is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    if not isinstance(payload, dict):
+        return web.json_response({"error": "JSON body must be an object"}, status=400)
+
+    started_at = parse_walk_started_at(payload.get("started_at"))
+    if started_at is None:
+        return web.json_response({"error": "started_at is required (ISO datetime)"}, status=400)
+
+    raw_duration = payload.get("duration_min")
+    if not isinstance(raw_duration, int) or raw_duration <= 0:
+        return web.json_response({"error": "duration_min must be a positive integer"}, status=400)
+
+    notes = payload.get("notes")
+    if notes is None:
+        prepared_notes = None
+    elif isinstance(notes, str):
+        prepared_notes = notes.strip() or None
+    else:
+        return web.json_response({"error": "notes must be string"}, status=400)
+
+    distance_km = payload.get("distance_km")
+    if distance_km is not None and not isinstance(distance_km, (int, float)):
+        return web.json_response({"error": "distance_km must be a number"}, status=400)
+
+    walks_columns = get_walks_columns()
+    started_column, duration_column = get_walks_mapping(walks_columns)
+
+    insert_columns = ["pet_id", started_column, duration_column]
+    insert_values: list[object] = [owned_pet_id, started_at, raw_duration]
+
+    if "notes" in walks_columns:
+        insert_columns.append("notes")
+        insert_values.append(prepared_notes)
+
+    if "distance_km" in walks_columns and distance_km is not None:
+        insert_columns.append("distance_km")
+        insert_values.append(float(distance_km))
+
+    returning_notes = "notes" if "notes" in walks_columns else "NULL AS notes"
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        placeholders = ", ".join(["%s"] * len(insert_columns))
+        db_cursor.execute(
+            f"""
+            INSERT INTO walks ({', '.join(insert_columns)})
+            VALUES ({placeholders})
+            RETURNING id, {started_column}, {duration_column}, {returning_notes}
+            """,
+            tuple(insert_values),
+        )
+        row = db_cursor.fetchone()
+    conn.commit()
+
+    walk_payload = {
+        "id": row[0],
+        "started_at": row[1].isoformat() if row[1] else None,
+        "duration_min": int(row[2]),
+        "notes": row[3],
+    }
+
+    return web.json_response({"ok": True, "walk": walk_payload})
+
 def validate_treatment_type(raw_type: object) -> str | None:
     if not isinstance(raw_type, str):
         return None
@@ -982,6 +1169,8 @@ async def start_web_server() -> None:
     app.router.add_post("/api/pets/{pet_id}/vaccinations", api_create_pet_vaccination)
     app.router.add_get("/api/pets/{pet_id}/weights", api_get_pet_weights)
     app.router.add_post("/api/pets/{pet_id}/weights", api_create_pet_weight)
+    app.router.add_get("/api/pets/{pet_id}/walks", api_get_pet_walks)
+    app.router.add_post("/api/pets/{pet_id}/walks", api_create_pet_walk)
     app.router.add_get("/api/pets/{pet_id}/treatments", api_get_pet_treatments)
     app.router.add_post("/api/pets/{pet_id}/treatments", api_create_pet_treatment)
 

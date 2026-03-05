@@ -97,17 +97,41 @@
         weight: 'Вес',
         weights: 'Вес',
         walk: 'Прогулка',
+        walks: 'Прогулка',
         events: 'События',
       };
 
       let selectedType = 'dog';
       let infoStatusTimer = null;
+      let activeWalkTimer = null;
 
       function formatDateRu(isoDate) {
         if (!isoDate) return '';
         const [year, month, day] = String(isoDate).split('-');
         if (!year || !month || !day) return isoDate;
         return `${day}.${month}.${year}`;
+      }
+
+      function formatDateTimeRu(rawDateTime) {
+        if (!rawDateTime) return '';
+        const date = new Date(rawDateTime);
+        if (Number.isNaN(date.getTime())) return String(rawDateTime);
+
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = String(date.getFullYear());
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+
+        return `${day}.${month}.${year} ${hours}:${minutes}`;
+      }
+
+      function formatDurationHms(totalSeconds) {
+        const safeSeconds = Math.max(0, Math.floor(totalSeconds));
+        const hours = String(Math.floor(safeSeconds / 3600)).padStart(2, '0');
+        const minutes = String(Math.floor((safeSeconds % 3600) / 60)).padStart(2, '0');
+        const seconds = String(safeSeconds % 60).padStart(2, '0');
+        return `${hours}:${minutes}:${seconds}`;
       }
 
       function setType(type) {
@@ -262,6 +286,16 @@
 
         if (section === 'weights') {
           renderWeightsScreen(petId);
+          return;
+        }
+
+        if (section === 'walk') {
+          setHash(`#pet/${petId}/walks`);
+          return;
+        }
+
+        if (section === 'walks') {
+          renderWalksScreen(petId);
           return;
         }
 
@@ -866,6 +900,275 @@
           const statusCodeText = error.status ? ` (${error.status})` : '';
           setWeightStatus('error', `Ошибка${statusCodeText}: ${error.message || 'не удалось загрузить список веса.'}`);
           renderWeightsList([]);
+        }
+      }
+
+
+      async function fetchWalks(petId) {
+        const response = await fetch(`/api/pets/${petId}/walks`, {
+          method: 'GET',
+          headers: getApiHeaders(),
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          const error = new Error(errData.error || 'Не удалось загрузить прогулки');
+          error.status = response.status;
+          throw error;
+        }
+
+        const data = await response.json();
+        return Array.isArray(data.walks) ? data.walks : [];
+      }
+
+      async function createWalk(petId, payload) {
+        const response = await fetch(`/api/pets/${petId}/walks`, {
+          method: 'POST',
+          headers: getApiHeaders(),
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          const error = new Error(errData.error || 'Не удалось сохранить прогулку');
+          error.status = response.status;
+          throw error;
+        }
+
+        return response.json();
+      }
+
+      function setWalkStatus(type, message) {
+        const statusEl = document.getElementById('walkStatus');
+        if (!statusEl) return;
+        statusEl.className = `status ${type}`;
+        statusEl.innerText = message;
+        statusEl.classList.remove('hidden');
+      }
+
+      function hideWalkStatus() {
+        const statusEl = document.getElementById('walkStatus');
+        if (!statusEl) return;
+        statusEl.classList.add('hidden');
+      }
+
+      function renderWalksList(walks) {
+        const listEl = document.getElementById('walksList');
+        if (!listEl) return;
+
+        if (!walks.length) {
+          listEl.innerHTML = '<p class="muted">Прогулок пока нет.</p>';
+          return;
+        }
+
+        listEl.innerHTML = walks
+          .map((walk) => {
+            const notesText = walk.notes ? `<div class="muted">Заметка: ${walk.notes}</div>` : '';
+            return `
+              <div class="pet-card">
+                <strong>${formatDateTimeRu(walk.started_at)} — ${walk.duration_min} мин</strong>
+                ${notesText}
+              </div>
+            `;
+          })
+          .join('');
+      }
+
+      function toggleWalkForm(show) {
+        const formNode = document.getElementById('walkManualForm');
+        const addBtn = document.getElementById('showWalkFormBtn');
+        if (!formNode || !addBtn) return;
+        formNode.classList.toggle('hidden', !show);
+        addBtn.classList.toggle('hidden', show);
+      }
+
+      function resetWalkForm() {
+        document.getElementById('walkStartedAt').value = '';
+        document.getElementById('walkDurationMin').value = '';
+        document.getElementById('walkNotes').value = '';
+      }
+
+      function stopActiveWalkTimer(resetState = false) {
+        if (activeWalkTimer?.intervalId) {
+          clearInterval(activeWalkTimer.intervalId);
+        }
+        if (resetState) {
+          activeWalkTimer = null;
+        } else if (activeWalkTimer) {
+          activeWalkTimer.intervalId = null;
+        }
+      }
+
+      async function renderWalksScreen(petId) {
+        screenSectionEl.innerHTML = `
+          <div class="row"><button class="back-btn" id="backToProfileBtn" type="button">← Назад</button></div>
+          <h3>Прогулка</h3>
+          <div id="walkStatus" class="status hidden"></div>
+
+          <div class="pet-card">
+            <strong>Таймер</strong>
+            <div id="walkTimerValue" class="muted" style="margin-top: 6px;">Идёт: 00:00:00</div>
+            <div class="row">
+              <button id="walkTimerBtn" type="button" class="primary">▶ Старт</button>
+            </div>
+          </div>
+
+          <div id="walksList"></div>
+
+          <div class="row">
+            <button id="showWalkFormBtn" type="button" class="primary">+ Добавить вручную</button>
+          </div>
+
+          <div id="walkManualForm" class="hidden">
+            <label class="label" for="walkStartedAt">Дата и время начала</label>
+            <input id="walkStartedAt" class="field" type="datetime-local" />
+
+            <label class="label" for="walkDurationMin">Длительность (мин)</label>
+            <input id="walkDurationMin" class="field" type="number" min="1" step="1" />
+
+            <label class="label" for="walkNotes">Заметка (опционально)</label>
+            <textarea id="walkNotes" class="field" rows="3" maxlength="500"></textarea>
+
+            <div class="row">
+              <button id="saveWalkBtn" type="button" class="primary">Сохранить</button>
+              <button id="cancelWalkBtn" type="button" class="back-btn">Отмена</button>
+            </div>
+          </div>
+        `;
+
+        const timerValueEl = document.getElementById('walkTimerValue');
+        const timerBtn = document.getElementById('walkTimerBtn');
+
+        const refreshWalks = async () => {
+          const walks = await fetchWalks(petId);
+          renderWalksList(walks);
+        };
+
+        const syncTimerUi = () => {
+          const isRunning = activeWalkTimer && activeWalkTimer.petId === petId && activeWalkTimer.startMs;
+          if (!isRunning) {
+            timerValueEl.innerText = 'Идёт: 00:00:00';
+            timerBtn.innerText = '▶ Старт';
+            return;
+          }
+
+          const elapsedSec = Math.floor((Date.now() - activeWalkTimer.startMs) / 1000);
+          timerValueEl.innerText = `Идёт: ${formatDurationHms(elapsedSec)}`;
+          timerBtn.innerText = '⏹ Стоп';
+        };
+
+        const startTimer = () => {
+          stopActiveWalkTimer(true);
+          activeWalkTimer = {
+            petId,
+            startMs: Date.now(),
+            startedAtIso: new Date().toISOString(),
+            intervalId: null,
+          };
+
+          syncTimerUi();
+          activeWalkTimer.intervalId = setInterval(syncTimerUi, 1000);
+          hideWalkStatus();
+        };
+
+        const stopTimerAndSave = async () => {
+          if (!activeWalkTimer || activeWalkTimer.petId !== petId || !activeWalkTimer.startMs) {
+            return;
+          }
+
+          const elapsedSec = Math.floor((Date.now() - activeWalkTimer.startMs) / 1000);
+          const durationMin = Math.max(1, Math.round(elapsedSec / 60));
+          const startedAt = activeWalkTimer.startedAtIso;
+
+          timerBtn.disabled = true;
+          try {
+            await createWalk(petId, {
+              started_at: startedAt,
+              duration_min: durationMin,
+            });
+            setWalkStatus('success', 'Прогулка сохранена ✅');
+            stopActiveWalkTimer(true);
+            syncTimerUi();
+            await refreshWalks();
+          } catch (error) {
+            const statusCodeText = error.status ? ` (${error.status})` : '';
+            setWalkStatus('error', `Ошибка${statusCodeText}: ${error.message || 'не удалось сохранить прогулку.'}`);
+          } finally {
+            timerBtn.disabled = false;
+          }
+        };
+
+        document.getElementById('backToProfileBtn').addEventListener('click', () => setHash(`#pet/${petId}`));
+        document.getElementById('showWalkFormBtn').addEventListener('click', () => {
+          hideWalkStatus();
+          toggleWalkForm(true);
+        });
+        document.getElementById('cancelWalkBtn').addEventListener('click', () => {
+          resetWalkForm();
+          hideWalkStatus();
+          toggleWalkForm(false);
+        });
+
+        document.getElementById('saveWalkBtn').addEventListener('click', async () => {
+          const saveBtn = document.getElementById('saveWalkBtn');
+          const startedAtLocal = document.getElementById('walkStartedAt').value;
+          const durationRaw = document.getElementById('walkDurationMin').value;
+          const notes = document.getElementById('walkNotes').value.trim();
+
+          if (!startedAtLocal) {
+            setWalkStatus('error', 'Укажите дату и время начала прогулки.');
+            return;
+          }
+
+          const durationMin = Number(durationRaw);
+          if (!Number.isInteger(durationMin) || durationMin <= 0) {
+            setWalkStatus('error', 'Укажите корректную длительность в минутах.');
+            return;
+          }
+
+          saveBtn.disabled = true;
+          try {
+            await createWalk(petId, {
+              started_at: startedAtLocal,
+              duration_min: durationMin,
+              notes: notes || null,
+            });
+            setWalkStatus('success', 'Прогулка добавлена ✅');
+            resetWalkForm();
+            toggleWalkForm(false);
+            await refreshWalks();
+          } catch (error) {
+            const statusCodeText = error.status ? ` (${error.status})` : '';
+            setWalkStatus('error', `Ошибка${statusCodeText}: ${error.message || 'не удалось сохранить прогулку.'}`);
+          } finally {
+            saveBtn.disabled = false;
+          }
+        });
+
+        timerBtn.addEventListener('click', async () => {
+          const isRunning = activeWalkTimer && activeWalkTimer.petId === petId && activeWalkTimer.startMs;
+          if (isRunning) {
+            await stopTimerAndSave();
+            return;
+          }
+          startTimer();
+        });
+
+        if (activeWalkTimer && activeWalkTimer.petId !== petId) {
+          stopActiveWalkTimer(true);
+        }
+
+        syncTimerUi();
+        if (activeWalkTimer && activeWalkTimer.petId === petId && !activeWalkTimer.intervalId) {
+          activeWalkTimer.intervalId = setInterval(syncTimerUi, 1000);
+        }
+
+        try {
+          await refreshWalks();
+        } catch (error) {
+          const statusCodeText = error.status ? ` (${error.status})` : '';
+          setWalkStatus('error', `Ошибка${statusCodeText}: ${error.message || 'не удалось загрузить список прогулок.'}`);
+          renderWalksList([]);
         }
       }
 
