@@ -42,6 +42,17 @@
       .summary-value { color: var(--text); text-align: right; }
       .pet-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
       .icon-btn { background: var(--secondary-bg); color: var(--text); padding: 8px 10px; font-size: 14px; }
+      .pets-header {
+        width: 100%;
+        max-height: 180px;
+        object-fit: contain;
+        margin-bottom: 10px;
+      }
+      .pet-avatar {
+        width: 48px;
+        height: 48px;
+        object-fit: contain;
+      }
     </style>
   </head>
   <body>
@@ -50,6 +61,7 @@
       <div id="u" class="muted">Загрузка...</div>
 
       <div id="screenList">
+        <img src="/assets/pets.png" class="pets-header" alt="PetPass" />
         <div id="pets"></div>
 
         <div id="actions" class="row">
@@ -126,6 +138,7 @@
         walks: 'Прогулка',
         events: 'События',
       };
+      const typeImage = { dog: '/assets/dog.png', cat: '/assets/cat.png' };
 
       let selectedType = 'dog';
       let infoStatusTimer = null;
@@ -213,7 +226,7 @@
 
         petsEl.innerHTML = pets
           .map((pet) => (
-            `<div class="pet-card" data-pet-id="${pet.id}"><strong>${pet.name}</strong><div class="pet-type">${typeLabel[pet.type] || pet.type}</div></div>`
+            `<div class="pet-card" data-pet-id="${pet.id}"><div class="row" style="margin-top:0;align-items:center;"><img src="${typeImage[pet.type] || typeImage.dog}" class="pet-avatar" alt="${pet.type}" /><div><strong>${pet.name}</strong><div class="pet-type">${typeLabel[pet.type] || pet.type}</div></div></div></div>`
           ))
           .join('');
 
@@ -331,8 +344,8 @@
 
       function renderPetProfile(summary) {
         const pet = summary.pet;
-        const petEmoji = pet.type === 'cat' ? '🐱' : '🐶';
         const bannerClass = pet.type === 'cat' ? 'cat' : 'dog';
+        const bannerImage = typeImage[pet.type] || typeImage.dog;
         const summaryRows = buildSummaryRows(summary)
           .map(([label, value]) => `<div class="summary-row"><span class="summary-label">${label}:</span><span class="summary-value">${value}</span></div>`)
           .join('');
@@ -345,7 +358,7 @@
               <button class="icon-btn" id="deletePetBtn" type="button">🗑 Удалить</button>
             </div>
           </div>
-          <div class="pet-banner ${bannerClass}">${petEmoji}</div>
+          <div class="pet-banner ${bannerClass}"><img src="${bannerImage}" class="pet-avatar" alt="${pet.type}" /></div>
           <h3 class="pet-name">${pet.name}</h3>
 
           <div class="summary-card">
