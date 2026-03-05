@@ -33,7 +33,24 @@
       .type-btn.active { background: var(--btn); color: var(--btnText); }
       .field { width: 100%; box-sizing: border-box; margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card-bg); color: var(--text); }
       .error { color: #b42318; margin-top: 8px; font-size: 14px; }
-      .back-btn { background: var(--secondary-bg); color: var(--text); }
+      .back-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 10px 14px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: var(--card);
+        color: var(--text);
+        font-size: 14px;
+        font-weight: 500;
+      }
+      .back-btn:hover {
+        background: color-mix(in srgb, var(--btn) 8%, var(--card));
+      }
+      .back-btn:active {
+        transform: translateY(1px);
+      }
       .status { margin-top: 10px; padding: 10px 12px; border-radius: 10px; font-size: 14px; }
       .status.success { background: #e8f8ef; color: #0f5132; border: 1px solid #b7ebcc; }
       .status.error { background: #fdecec; color: #842029; border: 1px solid #f5c2c7; }
