@@ -299,6 +299,11 @@
           return;
         }
 
+        if (section === 'events') {
+          renderEventsScreen(petId);
+          return;
+        }
+
         const sectionText = sectionLabel[section] || section;
         screenSectionEl.innerHTML = `
           <div class="row"><button class="back-btn" id="backToProfileBtn">← Назад в профиль</button></div>
@@ -1169,6 +1174,200 @@
           const statusCodeText = error.status ? ` (${error.status})` : '';
           setWalkStatus('error', `Ошибка${statusCodeText}: ${error.message || 'не удалось загрузить список прогулок.'}`);
           renderWalksList([]);
+        }
+      }
+
+      async function fetchEvents(petId) {
+        const response = await fetch(`/api/pets/${petId}/events`, {
+          method: 'GET',
+          headers: getApiHeaders(),
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          const error = new Error(errData.error || 'Не удалось загрузить события');
+          error.status = response.status;
+          throw error;
+        }
+
+        const data = await response.json();
+        return Array.isArray(data.events) ? data.events : [];
+      }
+
+      async function createEvent(petId, payload) {
+        const response = await fetch(`/api/pets/${petId}/events`, {
+          method: 'POST',
+          headers: getApiHeaders(),
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          const error = new Error(errData.error || 'Не удалось сохранить событие');
+          error.status = response.status;
+          throw error;
+        }
+
+        return response.json();
+      }
+
+      function setEventStatus(type, message) {
+        const statusEl = document.getElementById('eventStatus');
+        if (!statusEl) return;
+        statusEl.className = `status ${type}`;
+        statusEl.innerText = message;
+        statusEl.classList.remove('hidden');
+      }
+
+      function hideEventStatus() {
+        const statusEl = document.getElementById('eventStatus');
+        if (!statusEl) return;
+        statusEl.classList.add('hidden');
+      }
+
+      function renderEventsList(events) {
+        const listEl = document.getElementById('eventsList');
+        if (!listEl) return;
+
+        const typeMap = {
+          vet: '🩺 Ветеринар',
+          health: '❤️ Самочувствие',
+          note: '📝 Заметка',
+          other: '✨ Другое',
+        };
+
+        if (!events.length) {
+          listEl.innerHTML = '<p class="muted">Событий пока нет.</p>';
+          return;
+        }
+
+        listEl.innerHTML = events
+          .map((event) => {
+            const descriptionText = event.description ? `<div class="muted">${event.description}</div>` : '';
+            return `
+              <div class="pet-card">
+                <div class="muted">${formatDateTimeRu(event.event_date)}</div>
+                <div class="muted">Тип: ${typeMap[event.type] || typeMap.note}</div>
+                <strong>${event.title || ''}</strong>
+                ${descriptionText}
+              </div>
+            `;
+          })
+          .join('');
+      }
+
+      function toggleEventForm(show) {
+        const formNode = document.getElementById('eventForm');
+        const addBtn = document.getElementById('showEventFormBtn');
+        if (!formNode || !addBtn) return;
+        formNode.classList.toggle('hidden', !show);
+        addBtn.classList.toggle('hidden', show);
+      }
+
+      function resetEventForm() {
+        document.getElementById('eventType').value = 'note';
+        document.getElementById('eventTitle').value = '';
+        document.getElementById('eventDescription').value = '';
+        document.getElementById('eventDate').value = '';
+      }
+
+      async function renderEventsScreen(petId) {
+        screenSectionEl.innerHTML = `
+          <div class="row"><button class="back-btn" id="backToProfileBtn" type="button">← Назад</button></div>
+          <h3>События</h3>
+          <div id="eventStatus" class="status hidden"></div>
+          <div id="eventsList"></div>
+
+          <div class="row">
+            <button id="showEventFormBtn" type="button" class="primary">+ Добавить событие</button>
+          </div>
+
+          <div id="eventForm" class="hidden">
+            <label class="label" for="eventType">Тип</label>
+            <select id="eventType" class="field">
+              <option value="vet">🩺 Ветеринар</option>
+              <option value="health">❤️ Самочувствие</option>
+              <option value="note" selected>📝 Заметка</option>
+              <option value="other">✨ Другое</option>
+            </select>
+
+            <label class="label" for="eventTitle">Заголовок</label>
+            <input id="eventTitle" class="field" type="text" maxlength="128" />
+
+            <label class="label" for="eventDescription">Описание (опционально)</label>
+            <textarea id="eventDescription" class="field" rows="3" maxlength="500"></textarea>
+
+            <label class="label" for="eventDate">Дата и время (опционально)</label>
+            <input id="eventDate" class="field" type="datetime-local" />
+
+            <div class="row">
+              <button id="saveEventBtn" type="button" class="primary">Сохранить</button>
+              <button id="cancelEventBtn" type="button" class="back-btn">Отмена</button>
+            </div>
+          </div>
+        `;
+
+        document.getElementById('backToProfileBtn').addEventListener('click', () => setHash(`#pet/${petId}`));
+
+        document.getElementById('showEventFormBtn').addEventListener('click', () => {
+          hideEventStatus();
+          toggleEventForm(true);
+        });
+
+        document.getElementById('cancelEventBtn').addEventListener('click', () => {
+          resetEventForm();
+          hideEventStatus();
+          toggleEventForm(false);
+        });
+
+        const refreshEvents = async () => {
+          const events = await fetchEvents(petId);
+          renderEventsList(events);
+        };
+
+        document.getElementById('saveEventBtn').addEventListener('click', async () => {
+          const saveBtn = document.getElementById('saveEventBtn');
+          const type = document.getElementById('eventType').value;
+          const title = document.getElementById('eventTitle').value.trim();
+          const description = document.getElementById('eventDescription').value.trim();
+          const eventDate = document.getElementById('eventDate').value;
+
+          if (!title) {
+            setEventStatus('error', 'Укажите заголовок события.');
+            return;
+          }
+
+          const payload = {
+            type,
+            title,
+            description: description || null,
+          };
+
+          if (eventDate) {
+            payload.event_date = eventDate;
+          }
+
+          saveBtn.disabled = true;
+          try {
+            await createEvent(petId, payload);
+            setEventStatus('success', 'Событие сохранено ✅');
+            resetEventForm();
+            toggleEventForm(false);
+            await refreshEvents();
+          } catch (error) {
+            const statusCodeText = error.status ? ` (${error.status})` : '';
+            setEventStatus('error', `Ошибка${statusCodeText}: ${error.message || 'не удалось сохранить событие.'}`);
+          } finally {
+            saveBtn.disabled = false;
+          }
+        });
+
+        try {
+          await refreshEvents();
+        } catch (error) {
+          const statusCodeText = error.status ? ` (${error.status})` : '';
+          setEventStatus('error', `Ошибка${statusCodeText}: ${error.message || 'не удалось загрузить список событий.'}`);
+          renderEventsList([]);
         }
       }
 
