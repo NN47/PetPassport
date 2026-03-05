@@ -1766,7 +1766,7 @@
         const statusEl = document.getElementById('calendarStatus');
 
         try {
-          const [vaccinations, fleas, worms, weights, walks, events] = await Promise.all([
+          const resultList = await Promise.allSettled([
             fetchVaccinations(petId),
             fetchTreatments(petId, 'fleas'),
             fetchTreatments(petId, 'worms'),
@@ -1774,6 +1774,12 @@
             fetchWalks(petId),
             fetchEvents(petId),
           ]);
+
+          const [vaccinations, fleas, worms, weights, walks, events] = resultList.map((result) => (
+            result.status === 'fulfilled' && Array.isArray(result.value) ? result.value : []
+          ));
+
+          const hasErrors = resultList.some((result) => result.status === 'rejected');
 
           const records = [
             ...vaccinations.map((item) => ({ date: item.date_given, title: `💉 ${item.vaccine_name || 'Вакцинация'}` })),
@@ -1787,6 +1793,15 @@
             .map((item) => ({ ...item, ts: new Date(item.date).getTime() }))
             .filter((item) => Number.isFinite(item.ts))
             .sort((a, b) => b.ts - a.ts);
+
+          if (hasErrors) {
+            statusEl.className = 'status error';
+            statusEl.innerText = 'Часть данных не загрузилась, но календарь показывает все доступные события.';
+            statusEl.classList.remove('hidden');
+          } else {
+            statusEl.className = 'status hidden';
+            statusEl.innerText = '';
+          }
 
           if (!records.length) {
             listEl.innerHTML = '<div class="muted">Пока нет записей для календаря.</div>';
