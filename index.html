@@ -114,6 +114,41 @@
         height: 48px;
         object-fit: contain;
       }
+      .loading-state {
+        background: var(--card);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        padding: 28px 16px;
+        margin-top: 10px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        text-align: center;
+      }
+      .loading-image {
+        width: 72px;
+        height: 72px;
+        object-fit: contain;
+        animation: loadingPulse 1.2s ease-in-out infinite;
+      }
+      .loading-text {
+        margin: 0;
+        color: var(--hint);
+        font-size: 14px;
+      }
+      @keyframes loadingPulse {
+        0%,
+        100% {
+          transform: scale(1);
+          opacity: .75;
+        }
+        50% {
+          transform: scale(1.06);
+          opacity: 1;
+        }
+      }
       .settings-row {
         display: flex;
         align-items: center;
@@ -518,6 +553,15 @@
             setHash(`#pet/${petId}`);
           });
         });
+      }
+
+      function renderLoadingState(containerEl, message = 'Загружаем профиль питомца...') {
+        containerEl.innerHTML = `
+          <div class="loading-state">
+            <img src="/assets/loading-paw.svg" class="loading-image" alt="Загрузка" />
+            <p class="loading-text">${message}</p>
+          </div>
+        `;
       }
 
       async function loadPets() {
@@ -2665,6 +2709,14 @@
 
         const petId = petRouteMatch[1];
         const section = petRouteMatch[2];
+
+        if (section) {
+          renderLoadingState(screenSectionEl, 'Загружаем раздел...');
+          showScreen('section');
+        } else {
+          renderLoadingState(screenPetEl);
+          showScreen('pet');
+        }
 
         try {
           const [pet, petSummary] = await Promise.all([
