@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>PetPass</title>
+    <link rel="preload" as="image" href="assets/loading-paw.svg" />
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
       :root {
@@ -563,7 +564,7 @@
       function renderLoadingState(containerEl, message = 'Загружаем профиль питомца...') {
         containerEl.innerHTML = `
           <div class="loading-state">
-            <img src="/assets/loading-paw.svg" class="loading-image" alt="Загрузка" />
+            <img src="assets/loading-paw.svg" class="loading-image" alt="Загрузка" onerror="this.replaceWith(Object.assign(document.createElement('div'), { className: 'loading-image', textContent: '🐾', style: 'display:grid;place-items:center;font-size:44px;' }))" />
             <p class="loading-text">${message}</p>
           </div>
         `;
