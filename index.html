@@ -550,6 +550,11 @@
         petsEl.querySelectorAll('.pet-card').forEach((cardEl) => {
           cardEl.addEventListener('click', () => {
             const petId = cardEl.getAttribute('data-pet-id');
+            if (!petId) return;
+
+            renderLoadingState(screenPetEl);
+            showScreen('pet');
+            updateBottomBar(`pet/${petId}`);
             setHash(`#pet/${petId}`);
           });
         });
