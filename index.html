@@ -80,7 +80,14 @@
       .label { display: block; margin-top: 10px; margin-bottom: 4px; font-size: 14px; color: var(--text); }
       .birth-mode { display: flex; gap: 10px; margin-top: 8px; }
       .birth-mode label { display: flex; align-items: center; gap: 6px; font-size: 14px; }
-      .summary-card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px; margin-bottom: var(--gap); }
+      .summary-card {
+        background: #F6F7F9;
+        border: 1px solid rgba(0, 0, 0, .06);
+        border-radius: var(--radius);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, .03);
+        padding: 18px;
+        margin-bottom: var(--gap);
+      }
       .summary-title { font-weight: 700; margin-bottom: 10px; font-size: 15px; }
       .summary-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 6px 0; font-size: 14px; }
       .summary-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -115,9 +122,26 @@
       .chips { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; margin-top: 10px; max-width: 100%; max-height: 72px; overflow: hidden; }
       .chip { padding: 8px 12px; border-radius: 999px; background: rgba(255,255,255,.65); backdrop-filter: blur(6px); font-size: 14px; line-height: 1; color: var(--text); }
       .chip.muted { color: var(--hint); background: color-mix(in srgb, var(--card) 80%, var(--hint) 20%); }
+      .sections-subtitle { margin: 4px 0 10px; font-size: 15px; font-weight: 700; color: var(--text); }
       .action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap); }
-      .action { min-height: 92px; background: var(--card); border-radius: var(--radius); box-shadow: 0 6px 20px rgba(0, 0, 0, .05); padding: 14px; text-align: left; color: var(--text); display: flex; flex-direction: column; gap: 5px; }
+      .action {
+        min-height: 90px;
+        background: #fff;
+        border-radius: 18px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, .08);
+        padding: 14px;
+        text-align: left;
+        color: var(--text);
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        border: 0;
+      }
+      .action:hover,
+      .action:active { transform: translateY(1px); }
+      .action-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
       .action-emoji { font-size: 18px; line-height: 1; }
+      .action-arrow { font-size: 19px; line-height: 1; color: var(--hint); }
       .action-title { font-size: 15px; font-weight: 600; }
       .action-hint { font-size: 12px; color: var(--hint); line-height: 1.25; }
       .pets-header {
@@ -967,13 +991,14 @@
             ${summaryRows}
           </div>
 
+          <div class="sections-subtitle">Разделы</div>
           <div class="action-grid">
-            <button class="action" data-section="vaccinations"><span class="action-emoji">💉</span><span class="action-title">Вакцинация</span><span class="action-hint">Последние и будущие прививки</span></button>
-            <button class="action" data-section="treatments"><span class="action-emoji">🧴</span><span class="action-title">Обработка</span><span class="action-hint">От блох и от глистов</span></button>
-            <button class="action" data-section="weight"><span class="action-emoji">⚖️</span><span class="action-title">Вес</span><span class="action-hint">История и текущий вес</span></button>
-            <button class="action" data-section="walks"><span class="action-emoji">🐾</span><span class="action-title">Прогулка</span><span class="action-hint">Таймер и журнал прогулок</span></button>
-            <button class="action" data-section="events"><span class="action-emoji">🗂️</span><span class="action-title">События</span><span class="action-hint">Заметки и важные даты</span></button>
-            <button class="action" data-section="feedings"><span class="action-emoji">🍽️</span><span class="action-title">Питание</span><span class="action-hint">Отметки о кормлении</span></button>
+            <button class="action" data-section="vaccinations"><span class="action-top"><span class="action-emoji">💉</span><span class="action-arrow">→</span></span><span class="action-title">Вакцинация</span><span class="action-hint">Последние и будущие прививки</span></button>
+            <button class="action" data-section="treatments"><span class="action-top"><span class="action-emoji">🧴</span><span class="action-arrow">→</span></span><span class="action-title">Обработка</span><span class="action-hint">От блох и от глистов</span></button>
+            <button class="action" data-section="weight"><span class="action-top"><span class="action-emoji">⚖️</span><span class="action-arrow">→</span></span><span class="action-title">Вес</span><span class="action-hint">История и текущий вес</span></button>
+            <button class="action" data-section="walks"><span class="action-top"><span class="action-emoji">🐾</span><span class="action-arrow">→</span></span><span class="action-title">Прогулка</span><span class="action-hint">Таймер и журнал прогулок</span></button>
+            <button class="action" data-section="events"><span class="action-top"><span class="action-emoji">🗂️</span><span class="action-arrow">→</span></span><span class="action-title">События</span><span class="action-hint">Заметки и важные даты</span></button>
+            <button class="action" data-section="feedings"><span class="action-top"><span class="action-emoji">🍽️</span><span class="action-arrow">→</span></span><span class="action-title">Питание</span><span class="action-hint">Отметки о кормлении</span></button>
           </div>
         `;
 
