@@ -1009,6 +1009,7 @@ async def api_get_pet_summary(request: web.Request) -> web.Response:
             SELECT {walk_started_column}, {walk_duration_column}
             FROM walks
             WHERE pet_id = %s
+              AND DATE({walk_started_column}) = CURRENT_DATE
             ORDER BY {walk_started_column} DESC, id DESC
             LIMIT 1
             """,
@@ -1021,6 +1022,7 @@ async def api_get_pet_summary(request: web.Request) -> web.Response:
             SELECT {event_date_column}, {event_type_select}, title
             FROM events
             WHERE pet_id = %s
+              AND DATE({event_date_column}) = CURRENT_DATE
             ORDER BY {event_date_column} DESC, id DESC
             LIMIT 1
             """,
@@ -1033,6 +1035,7 @@ async def api_get_pet_summary(request: web.Request) -> web.Response:
             SELECT fed_at, notes
             FROM feedings
             WHERE pet_id = %s
+              AND DATE(fed_at) = CURRENT_DATE
             ORDER BY fed_at DESC, id DESC
             LIMIT 1
             """,
