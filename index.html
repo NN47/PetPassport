@@ -237,6 +237,30 @@
         border: 1px solid var(--border);
         font-size: 14px;
       }
+      .health-hero {
+        margin: 12px 0 16px;
+        padding: 18px;
+        border-radius: var(--radius);
+        background: var(--card);
+        box-shadow: var(--shadow);
+        border: 1px solid var(--border);
+      }
+      .health-hero-title {
+        margin: 0;
+        font-size: 14px;
+        color: var(--hint);
+      }
+      .health-hero-value {
+        margin: 8px 0 0;
+        font-size: 26px;
+        font-weight: 700;
+        line-height: 1.2;
+      }
+      .health-hero-sub {
+        margin: 8px 0 0;
+        font-size: 13px;
+        color: var(--hint);
+      }
       .archive-block {
         margin-top: 12px;
         padding: 12px;
@@ -1103,7 +1127,25 @@
 
       function renderVaccinationsList(vaccinations) {
         const listEl = document.getElementById('vaccinationsList');
+        const latestEl = document.getElementById('vaccinationLatestValue');
+        const dueEl = document.getElementById('vaccinationDueValue');
         if (!listEl) return;
+
+        const latest = vaccinations[0] || null;
+        const upcoming = vaccinations
+          .filter((item) => item.next_due)
+          .sort((a, b) => String(a.next_due).localeCompare(String(b.next_due)))[0] || null;
+
+        if (latestEl) {
+          latestEl.innerText = latest
+            ? `${latest.vaccine_name} · ${formatDateRu(latest.date_given)}`
+            : 'Записей пока нет';
+        }
+        if (dueEl) {
+          dueEl.innerText = upcoming
+            ? formatDateRu(upcoming.next_due)
+            : 'Не запланировано';
+        }
 
         if (!vaccinations.length) {
           listEl.innerHTML = '<p class="muted">Записей вакцинации пока нет.</p>';
@@ -1113,24 +1155,26 @@
         listEl.innerHTML = vaccinations
           .map((item) => {
             const nextDueText = item.next_due
-              ? `<div class="muted">Следующая: ${formatDateRu(item.next_due)}</div>`
+              ? `<div class="walk-notes">Следующая: ${formatDateRu(item.next_due)}</div>`
               : '';
             const notesText = item.notes
-              ? `<div class="muted">Заметка: ${item.notes}</div>`
+              ? `<div class="walk-notes">Заметка: ${item.notes}</div>`
               : '';
 
             return `
-              <div class="pet-card">
-                <strong>${formatDateRu(item.date_given)} — ${item.vaccine_name}</strong>
-                ${nextDueText}
-                ${notesText}
-                <div class="row">
-                  <button class="icon-btn danger-btn" data-delete-vaccination-id="${item.id}" type="button">🗑 Удалить</button>
+              <div class="walk-compact-row">
+                <div>
+                  <div class="walk-time-line">${formatDateRu(item.date_given)} — ${item.vaccine_name}</div>
+                  ${nextDueText}
+                  ${notesText}
                 </div>
+                <button class="walk-delete-btn" data-delete-vaccination-id="${item.id}" type="button" aria-label="Удалить запись">🗑</button>
               </div>
             `;
           })
           .join('');
+
+        listEl.innerHTML = `<div class="walk-compact-list">${listEl.innerHTML}</div>`;
       }
 
       async function refreshVaccinations(petId) {
@@ -1155,13 +1199,21 @@
 
       async function renderVaccinationsScreen(petId) {
         screenSectionEl.innerHTML = `
-          <div class="row"><button class="back-btn" id="backToProfileBtn">← Назад</button></div>
-          <h3>Вакцинация</h3>
+          <div><button class="back-btn" id="backToProfileBtn">← Назад</button></div>
+          <h3 style="margin: 12px 0 0;">Вакцинация</h3>
           <div id="vaccinationStatus" class="status hidden"></div>
+
+          <div class="health-hero">
+            <p class="health-hero-title">Последняя вакцинация</p>
+            <p id="vaccinationLatestValue" class="health-hero-value">Записей пока нет</p>
+            <p class="health-hero-sub">Ближайшая следующая: <strong id="vaccinationDueValue">Не запланировано</strong></p>
+          </div>
+
+          <h4 class="walk-list-section-title">История вакцинаций</h4>
           <div id="vaccinationsList"></div>
 
           <div class="row">
-            <button id="showVaccinationFormBtn" type="button" class="primary">+ Добавить вакцинацию</button>
+            <button id="showVaccinationFormBtn" type="button" class="ghost-btn">Добавить запись</button>
           </div>
 
           <div id="vaccinationForm" class="hidden">
@@ -1329,7 +1381,25 @@
 
       function renderTreatmentsList(items) {
         const listEl = document.getElementById('treatmentsList');
+        const latestEl = document.getElementById('treatmentLatestValue');
+        const dueEl = document.getElementById('treatmentDueValue');
         if (!listEl) return;
+
+        const latest = items[0] || null;
+        const upcoming = items
+          .filter((item) => item.next_due)
+          .sort((a, b) => String(a.next_due).localeCompare(String(b.next_due)))[0] || null;
+
+        if (latestEl) {
+          latestEl.innerText = latest
+            ? `${latest.product_name} · ${formatDateRu(latest.date_given)}`
+            : 'Записей пока нет';
+        }
+        if (dueEl) {
+          dueEl.innerText = upcoming
+            ? formatDateRu(upcoming.next_due)
+            : 'Не запланировано';
+        }
 
         if (!items.length) {
           listEl.innerHTML = '<p class="muted">Записей пока нет.</p>';
@@ -1339,24 +1409,26 @@
         listEl.innerHTML = items
           .map((item) => {
             const nextDueText = item.next_due
-              ? `<div class="muted">Следующая: ${formatDateRu(item.next_due)}</div>`
+              ? `<div class="walk-notes">Следующая: ${formatDateRu(item.next_due)}</div>`
               : '';
             const notesText = item.notes
-              ? `<div class="muted">Заметка: ${item.notes}</div>`
+              ? `<div class="walk-notes">Заметка: ${item.notes}</div>`
               : '';
 
             return `
-              <div class="pet-card">
-                <strong>${formatDateRu(item.date_given)} — ${item.product_name}</strong>
-                ${nextDueText}
-                ${notesText}
-                <div class="row">
-                  <button class="icon-btn danger-btn" data-delete-treatment-id="${item.id}" type="button">🗑 Удалить</button>
+              <div class="walk-compact-row">
+                <div>
+                  <div class="walk-time-line">${formatDateRu(item.date_given)} — ${item.product_name}</div>
+                  ${nextDueText}
+                  ${notesText}
                 </div>
+                <button class="walk-delete-btn" data-delete-treatment-id="${item.id}" type="button" aria-label="Удалить запись">🗑</button>
               </div>
             `;
           })
           .join('');
+
+        listEl.innerHTML = `<div class="walk-compact-list">${listEl.innerHTML}</div>`;
       }
 
       function resetTreatmentForm() {
@@ -1378,8 +1450,14 @@
         let currentType = initialType === 'worms' ? 'worms' : 'fleas';
 
         screenSectionEl.innerHTML = `
-          <div class="row"><button class="back-btn" id="backToProfileBtn">← Назад</button></div>
-          <h3>Обработка</h3>
+          <div><button class="back-btn" id="backToProfileBtn">← Назад</button></div>
+          <h3 style="margin: 12px 0 0;">Обработка</h3>
+
+          <div class="health-hero">
+            <p class="health-hero-title">Последняя обработка</p>
+            <p id="treatmentLatestValue" class="health-hero-value">Записей пока нет</p>
+            <p class="health-hero-sub">Ближайшая следующая: <strong id="treatmentDueValue">Не запланировано</strong></p>
+          </div>
 
           <div class="row">
             <button id="treatmentTabFleas" type="button" class="type-btn">От блох</button>
@@ -1387,10 +1465,11 @@
           </div>
 
           <div id="treatmentStatus" class="status hidden"></div>
+          <h4 class="walk-list-section-title">История обработок</h4>
           <div id="treatmentsList"></div>
 
           <div class="row">
-            <button id="showTreatmentFormBtn" type="button" class="primary">+ Добавить обработку</button>
+            <button id="showTreatmentFormBtn" type="button" class="ghost-btn">Добавить запись</button>
           </div>
 
           <div id="treatmentForm" class="hidden">
