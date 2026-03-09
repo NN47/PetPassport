@@ -163,6 +163,17 @@
         font-size: 14px;
         font-weight: 600;
       }
+      .walk-summary-title {
+        font-size: 12px;
+        color: var(--hint);
+        margin-bottom: 4px;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+      }
+      .walk-summary-value {
+        font-size: 18px;
+        font-weight: 700;
+      }
       .walk-list-section-title {
         margin: 14px 0 8px;
         font-size: 14px;
@@ -182,10 +193,16 @@
         color: var(--text);
         border: 1px solid var(--border);
         border-radius: 12px;
+        font-weight: 600;
+      }
+      .archive-toggle::marker,
+      .archive-toggle::-webkit-details-marker {
+        display: none;
       }
       .archive-day-title {
         margin: 14px 0 8px;
         font-size: 14px;
+        font-weight: 700;
       }
       @keyframes loadingPulse {
         0%,
@@ -1784,13 +1801,16 @@
           : '<p class="muted">Архив пуст.</p>';
 
         listEl.innerHTML = `
-          <div class="walk-summary">Сегодня всего: ${formatMinutesDuration(todayTotalMinutes)}</div>
+          <div class="walk-summary">
+            <div class="walk-summary-title">Дневная сводка</div>
+            <div class="walk-summary-value">${formatMinutesDuration(todayTotalMinutes)}</div>
+          </div>
           <h4 class="walk-list-section-title">Сегодня</h4>
           ${todayContent}
           <div class="archive-block">
             <h4 class="walk-list-section-title" style="margin-top: 0;">История</h4>
             <details>
-              <summary class="archive-toggle">📁 Архив</summary>
+              <summary class="archive-toggle">📁 Показать архив по дням</summary>
               ${archiveContent}
             </details>
           </div>
