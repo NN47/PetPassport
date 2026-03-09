@@ -1019,6 +1019,17 @@ async def api_get_pet_summary(request: web.Request) -> web.Response:
 
         db_cursor.execute(
             f"""
+            SELECT COALESCE(SUM({walk_duration_column}), 0)
+            FROM walks
+            WHERE pet_id = %s
+              AND DATE({walk_started_column}) = CURRENT_DATE
+            """,
+            (owned_pet_id,),
+        )
+        total_walk_duration_today_row = db_cursor.fetchone()
+
+        db_cursor.execute(
+            f"""
             SELECT {event_date_column}, {event_type_select}, title
             FROM events
             WHERE pet_id = %s
@@ -1084,6 +1095,10 @@ async def api_get_pet_summary(request: web.Request) -> web.Response:
             "duration_min": int(latest_walk_row[1]) if latest_walk_row[1] is not None else None,
         }
 
+    total_walk_duration_today_min = 0
+    if total_walk_duration_today_row is not None and total_walk_duration_today_row[0] is not None:
+        total_walk_duration_today_min = int(total_walk_duration_today_row[0])
+
     latest_event = None
     if latest_event_row is not None:
         latest_event = {
@@ -1107,6 +1122,7 @@ async def api_get_pet_summary(request: web.Request) -> web.Response:
             "latest_treatment_fleas": latest_treatment_fleas,
             "latest_treatment_worms": latest_treatment_worms,
             "latest_walk": latest_walk,
+            "total_walk_duration_today_min": total_walk_duration_today_min,
             "latest_event": latest_event,
             "latest_feeding": latest_feeding,
         }
