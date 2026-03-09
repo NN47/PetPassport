@@ -155,16 +155,25 @@
         font-size: 14px;
       }
       .walk-summary {
-        margin: 10px 0;
-        padding: 10px 12px;
-        border-radius: 10px;
+        margin: 10px 0 12px;
+        padding: 12px 14px;
+        border-radius: 12px;
         background: color-mix(in srgb, var(--btn) 10%, var(--card));
         border: 1px solid color-mix(in srgb, var(--btn) 24%, var(--border));
         font-size: 14px;
         font-weight: 600;
       }
+      .walk-list-section-title {
+        margin: 14px 0 8px;
+        font-size: 14px;
+        font-weight: 700;
+      }
       .archive-block {
         margin-top: 12px;
+        padding: 12px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: color-mix(in srgb, var(--card) 86%, var(--secondary-bg));
       }
       .archive-toggle {
         width: 100%;
@@ -1726,11 +1735,6 @@
         const listEl = document.getElementById('walksList');
         if (!listEl) return;
 
-        if (!walks.length) {
-          listEl.innerHTML = '<p class="muted">Прогулок пока нет.</p>';
-          return;
-        }
-
         const todayKey = getDateKey(new Date().toISOString());
         const todayWalks = [];
         const archiveByDay = new Map();
@@ -1781,8 +1785,10 @@
 
         listEl.innerHTML = `
           <div class="walk-summary">Сегодня всего: ${formatMinutesDuration(todayTotalMinutes)}</div>
+          <h4 class="walk-list-section-title">Сегодня</h4>
           ${todayContent}
           <div class="archive-block">
+            <h4 class="walk-list-section-title" style="margin-top: 0;">История</h4>
             <details>
               <summary class="archive-toggle">📁 Архив</summary>
               ${archiveContent}
