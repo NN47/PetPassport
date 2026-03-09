@@ -28,7 +28,7 @@
       textarea,
       select,
       button {
-        font-size: 16px;
+        font-size: 16px !important;
       }
       input,
       textarea,
@@ -39,6 +39,12 @@
         -webkit-text-size-adjust: 100%;
       }
       textarea { resize: none; }
+      .input,
+      .textarea,
+      .select,
+      .field {
+        font-size: 16px !important;
+      }
       button { padding: 12px 14px; border-radius: 12px; border: 1px solid transparent; cursor: pointer; }
       .pet-card { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-top: 10px; cursor: pointer; background: var(--card-bg); }
       .pet-type { font-size: 13px; color: var(--hint); }
@@ -48,7 +54,7 @@
       .row { display: flex; gap: 8px; margin-top: 10px; }
       .type-btn { background: var(--secondary-bg); color: var(--text); }
       .type-btn.active { background: var(--btn); color: var(--btnText); }
-      .field { width: 100%; box-sizing: border-box; margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card-bg); color: var(--text); font-size: 16px !important; }
+      .field { width: 100%; box-sizing: border-box; margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card-bg); color: var(--text); }
       .error { color: #b42318; margin-top: 8px; font-size: 14px; }
       .back-btn {
         display: inline-flex;
