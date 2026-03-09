@@ -1600,41 +1600,76 @@
       }
 
       function renderWeightsList(weights) {
-        const summaryEl = document.getElementById('weightSummary');
-        const trendEl = document.getElementById('weightTrend');
+        const currentEl = document.getElementById('weightCurrentValue');
+        const trendEl = document.getElementById('weightTrendValue');
         const listEl = document.getElementById('weightsList');
-        if (!listEl || !summaryEl || !trendEl) return;
+        if (!listEl || !currentEl || !trendEl) return;
+
+        const todayKey = getDateKey(new Date().toISOString());
+        const todayWeights = [];
+        const archiveByDay = new Map();
+
+        weights.forEach((weightItem) => {
+          const dayKey = getDateKey(weightItem.date);
+          if (!dayKey || dayKey === todayKey) {
+            todayWeights.push(weightItem);
+            return;
+          }
+          if (!archiveByDay.has(dayKey)) archiveByDay.set(dayKey, []);
+          archiveByDay.get(dayKey).push(weightItem);
+        });
 
         if (!weights.length) {
-          summaryEl.innerHTML = '<div class="muted">Текущий вес: —</div>';
-          trendEl.innerHTML = '';
+          currentEl.innerText = '—';
+          trendEl.innerText = '—';
           listEl.innerHTML = '<p class="muted">Записей веса пока нет.</p>';
           return;
         }
 
         const latest = weights[0];
-        summaryEl.innerHTML = `<strong>Текущий вес: ${Number(latest.weight).toFixed(1)} кг</strong> <span class="muted">(${formatDateRu(latest.date)})</span>`;
+        currentEl.innerText = `${Number(latest.weight).toFixed(1)} кг`;
+        trendEl.innerText = weights[1]
+          ? `${Number(latest.weight - Number(weights[1].weight)).toFixed(1)} кг к прошлому замеру`
+          : formatDateRu(latest.date);
 
-        const trendValues = weights.slice(0, 5).map((item) => Number(item.weight).toFixed(1));
-        trendEl.innerHTML = `<div class="muted">Последние значения: ${trendValues.join(' → ')}</div>`;
-
-        listEl.innerHTML = weights
-          .map((item) => {
-            const notesText = item.notes
-              ? `<div class="muted">Заметка: ${item.notes}</div>`
-              : '';
-
-            return `
-              <div class="pet-card">
-                <strong>${formatDateRu(item.date)} — ${Number(item.weight).toFixed(1)} кг</strong>
+        const renderWeightRow = (item) => {
+          const notesText = item.notes ? `<div class="walk-notes">${item.notes}</div>` : '';
+          return `
+            <div class="walk-compact-row">
+              <div>
+                <div class="walk-time-line">${formatDateRu(item.date)} — ${Number(item.weight).toFixed(1)} кг</div>
                 ${notesText}
-                <div class="row">
-                  <button class="icon-btn danger-btn" data-delete-weight-id="${item.id}" type="button">🗑 Удалить</button>
-                </div>
               </div>
-            `;
-          })
-          .join('');
+              <button class="walk-delete-btn" data-delete-weight-id="${item.id}" type="button" aria-label="Удалить запись">🗑</button>
+            </div>
+          `;
+        };
+
+        const todayContent = todayWeights.length
+          ? `<div class="walk-compact-list">${todayWeights.map(renderWeightRow).join('')}</div>`
+          : '<p class="muted">Сегодня замеров пока нет.</p>';
+
+        const archiveDays = Array.from(archiveByDay.keys()).sort((a, b) => b.localeCompare(a));
+        const archiveContent = archiveDays.length
+          ? archiveDays.map((dayKey) => `
+              <div>
+                <h4 class="archive-day-title">${formatDateRu(dayKey)}</h4>
+                <div class="walk-compact-list">${(archiveByDay.get(dayKey) || []).map(renderWeightRow).join('')}</div>
+              </div>
+            `).join('')
+          : '<p class="muted">Архив пуст.</p>';
+
+        listEl.innerHTML = `
+          <h4 class="walk-list-section-title">Сегодня</h4>
+          ${todayContent}
+          <div class="archive-block">
+            <h4 class="walk-list-section-title" style="margin-top: 0;">История</h4>
+            <details>
+              <summary class="archive-toggle">Показать архив по дням</summary>
+              ${archiveContent}
+            </details>
+          </div>
+        `;
       }
 
       async function renderWeightsScreen(petId) {
@@ -1642,12 +1677,24 @@
           <div class="row"><button class="back-btn" id="backToProfileBtn">← Назад</button></div>
           <h3>Вес</h3>
           <div id="weightStatus" class="status hidden"></div>
-          <div id="weightSummary" style="margin-bottom: 8px;"></div>
-          <div id="weightTrend" style="margin-bottom: 10px;"></div>
+
+          <div class="walk-hero">
+            <div class="walk-metrics" style="margin-top: 0;">
+              <div class="walk-metric-row">
+                <span class="walk-metric-label">Текущий:</span>
+                <strong id="weightCurrentValue">—</strong>
+              </div>
+              <div class="walk-metric-row">
+                <span class="walk-metric-label">Динамика:</span>
+                <strong id="weightTrendValue">—</strong>
+              </div>
+            </div>
+          </div>
+
           <div id="weightsList"></div>
 
           <div class="row">
-            <button id="showWeightFormBtn" type="button" class="primary">+ Добавить вес</button>
+            <button id="showWeightFormBtn" type="button" class="ghost-btn">Добавить вручную</button>
           </div>
 
           <div id="weightForm" class="hidden">
@@ -1748,6 +1795,20 @@
           setWeightStatus('error', `Ошибка${statusCodeText}: ${error.message || 'не удалось загрузить список веса.'}`);
           renderWeightsList([]);
         }
+      }
+
+      function toggleFeedingForm(show) {
+        const formNode = document.getElementById('feedingForm');
+        const addBtn = document.getElementById('showFeedingFormBtn');
+        if (!formNode || !addBtn) return;
+        formNode.classList.toggle('hidden', !show);
+        addBtn.classList.toggle('hidden', show);
+      }
+
+      function resetFeedingForm() {
+        document.getElementById('feedingAt').value = '';
+        document.getElementById('feedingFood').value = '';
+        document.getElementById('feedingNotes').value = '';
       }
 
 
@@ -2198,28 +2259,70 @@
 
       function renderFeedingsList(feedings) {
         const listEl = document.getElementById('feedingsList');
+        const todayCountEl = document.getElementById('feedingTodayCount');
+        const latestFeedingEl = document.getElementById('feedingLatestValue');
         if (!listEl) return;
+
+        const todayKey = getDateKey(new Date().toISOString());
+        const todayFeedings = [];
+        const archiveByDay = new Map();
+
+        feedings.forEach((feeding) => {
+          const dayKey = getDateKey(feeding.fed_at);
+          if (!dayKey || dayKey === todayKey) {
+            todayFeedings.push(feeding);
+            return;
+          }
+          if (!archiveByDay.has(dayKey)) archiveByDay.set(dayKey, []);
+          archiveByDay.get(dayKey).push(feeding);
+        });
+
+        if (todayCountEl) todayCountEl.innerText = String(todayFeedings.length);
+        if (latestFeedingEl) latestFeedingEl.innerText = feedings[0] ? formatDateTimeShort(feedings[0].fed_at) : '—';
 
         if (!feedings.length) {
           listEl.innerHTML = '<p class="muted">Отметок по питанию пока нет.</p>';
           return;
         }
 
-        listEl.innerHTML = feedings
-          .map((item) => {
-            const notesText = item.notes ? `<div class="muted">Заметка: ${item.notes}</div>` : '';
-            return `
-              <div class="pet-card">
-                <strong>🍽️ ${formatDateTimeRu(item.fed_at)}</strong>
-                <div>Что ел: ${item.food || '—'}</div>
+        const renderFeedingRow = (item) => {
+          const notesText = item.notes ? `<div class="walk-notes">${item.notes}</div>` : '';
+          return `
+            <div class="walk-compact-row">
+              <div>
+                <div class="walk-time-line">${formatTimeOnly(item.fed_at)} — ${item.food || '—'}</div>
                 ${notesText}
-                <div class="row">
-                  <button class="icon-btn danger-btn" data-delete-feeding-id="${item.id}" type="button">🗑 Удалить</button>
-                </div>
               </div>
-            `;
-          })
-          .join('');
+              <button class="walk-delete-btn" data-delete-feeding-id="${item.id}" type="button" aria-label="Удалить запись">🗑</button>
+            </div>
+          `;
+        };
+
+        const todayContent = todayFeedings.length
+          ? `<div class="walk-compact-list">${todayFeedings.map(renderFeedingRow).join('')}</div>`
+          : '<p class="muted">Сегодня кормлений пока нет.</p>';
+
+        const archiveDays = Array.from(archiveByDay.keys()).sort((a, b) => b.localeCompare(a));
+        const archiveContent = archiveDays.length
+          ? archiveDays.map((dayKey) => `
+              <div>
+                <h4 class="archive-day-title">${formatDateRu(dayKey)}</h4>
+                <div class="walk-compact-list">${(archiveByDay.get(dayKey) || []).map(renderFeedingRow).join('')}</div>
+              </div>
+            `).join('')
+          : '<p class="muted">Архив пуст.</p>';
+
+        listEl.innerHTML = `
+          <h4 class="walk-list-section-title">Сегодня</h4>
+          ${todayContent}
+          <div class="archive-block">
+            <h4 class="walk-list-section-title" style="margin-top: 0;">История</h4>
+            <details>
+              <summary class="archive-toggle">Показать архив по дням</summary>
+              ${archiveContent}
+            </details>
+          </div>
+        `;
       }
 
       async function renderFeedingsScreen(petId) {
@@ -2227,23 +2330,53 @@
           <div class="row"><button class="back-btn" id="backToProfileBtn" type="button">← Назад</button></div>
           <h3>Питание</h3>
           <div id="feedingStatus" class="status hidden"></div>
+
+          <div class="walk-hero">
+            <div class="walk-metrics" style="margin-top: 0;">
+              <div class="walk-metric-row">
+                <span class="walk-metric-label">Сегодня кормлений:</span>
+                <strong id="feedingTodayCount">0</strong>
+              </div>
+              <div class="walk-metric-row">
+                <span class="walk-metric-label">Последняя отметка:</span>
+                <strong id="feedingLatestValue">—</strong>
+              </div>
+            </div>
+          </div>
+
           <div id="feedingsList"></div>
 
-          <label class="label" for="feedingAt">Дата и время кормления</label>
-          <input id="feedingAt" class="field" type="datetime-local" />
-
-          <label class="label" for="feedingFood">Что ел питомец</label>
-          <input id="feedingFood" class="field" type="text" maxlength="200" placeholder="Например: сухой корм, 70 г" />
-
-          <label class="label" for="feedingNotes">Заметка (опционально)</label>
-          <textarea id="feedingNotes" class="field" rows="2" maxlength="300" placeholder="Дополнительно"></textarea>
-
           <div class="row">
-            <button id="markFeedingBtn" type="button" class="primary">✅ Отметить кормление</button>
+            <button id="showFeedingFormBtn" type="button" class="ghost-btn">Добавить вручную</button>
+          </div>
+
+          <div id="feedingForm" class="hidden">
+            <label class="label" for="feedingAt">Дата и время кормления</label>
+            <input id="feedingAt" class="field" type="datetime-local" />
+
+            <label class="label" for="feedingFood">Что ел питомец</label>
+            <input id="feedingFood" class="field" type="text" maxlength="200" placeholder="Например: сухой корм, 70 г" />
+
+            <label class="label" for="feedingNotes">Заметка (опционально)</label>
+            <textarea id="feedingNotes" class="field" rows="2" maxlength="300" placeholder="Дополнительно"></textarea>
+
+            <div class="row">
+              <button id="markFeedingBtn" type="button" class="primary">Сохранить</button>
+              <button id="cancelFeedingBtn" type="button" class="back-btn">Отмена</button>
+            </div>
           </div>
         `;
 
         document.getElementById('backToProfileBtn').addEventListener('click', () => setHash(`#pet/${petId}`));
+        document.getElementById('showFeedingFormBtn').addEventListener('click', () => {
+          hideFeedingStatus();
+          toggleFeedingForm(true);
+        });
+        document.getElementById('cancelFeedingBtn').addEventListener('click', () => {
+          resetFeedingForm();
+          hideFeedingStatus();
+          toggleFeedingForm(false);
+        });
 
         const refreshFeedings = async () => {
           const feedings = await fetchFeedings(petId);
@@ -2296,10 +2429,9 @@
               food,
               notes: notes || null,
             });
-            document.getElementById('feedingAt').value = '';
-            document.getElementById('feedingFood').value = '';
-            document.getElementById('feedingNotes').value = '';
+            resetFeedingForm();
             setFeedingStatus('success', 'Кормление отмечено ✅');
+            toggleFeedingForm(false);
             await refreshFeedings();
           } catch (error) {
             const statusCodeText = error.status ? ` (${error.status})` : '';
@@ -2524,6 +2656,8 @@
 
       function renderEventsList(events) {
         const listEl = document.getElementById('eventsList');
+        const todayCountEl = document.getElementById('eventTodayCount');
+        const latestEventEl = document.getElementById('eventLatestValue');
         if (!listEl) return;
 
         const typeMap = {
@@ -2533,27 +2667,67 @@
           other: '✨ Другое',
         };
 
+        const todayKey = getDateKey(new Date().toISOString());
+        const todayEvents = [];
+        const archiveByDay = new Map();
+
+        events.forEach((eventItem) => {
+          const dayKey = getDateKey(eventItem.event_date);
+          if (!dayKey || dayKey === todayKey) {
+            todayEvents.push(eventItem);
+            return;
+          }
+          if (!archiveByDay.has(dayKey)) archiveByDay.set(dayKey, []);
+          archiveByDay.get(dayKey).push(eventItem);
+        });
+
+        if (todayCountEl) todayCountEl.innerText = String(todayEvents.length);
+        if (latestEventEl) latestEventEl.innerText = events[0] ? formatDateTimeShort(events[0].event_date) : '—';
+
         if (!events.length) {
           listEl.innerHTML = '<p class="muted">Событий пока нет.</p>';
           return;
         }
 
-        listEl.innerHTML = events
-          .map((event) => {
-            const descriptionText = event.description ? `<div class="muted">${event.description}</div>` : '';
-            return `
-              <div class="pet-card">
-                <div class="muted">${formatDateTimeRu(event.event_date)}</div>
-                <div class="muted">Тип: ${typeMap[event.type] || typeMap.note}</div>
-                <strong>${event.title || ''}</strong>
+        const renderEventRow = (event) => {
+          const descriptionText = event.description ? `<div class="walk-notes">${event.description}</div>` : '';
+          return `
+            <div class="walk-compact-row">
+              <div>
+                <div class="walk-time-line">${formatTimeOnly(event.event_date)} — ${event.title || ''}</div>
+                <div class="walk-notes">${typeMap[event.type] || typeMap.note}</div>
                 ${descriptionText}
-                <div class="row">
-                  <button class="icon-btn danger-btn" data-delete-event-id="${event.id}" type="button">🗑 Удалить</button>
-                </div>
               </div>
-            `;
-          })
-          .join('');
+              <button class="walk-delete-btn" data-delete-event-id="${event.id}" type="button" aria-label="Удалить запись">🗑</button>
+            </div>
+          `;
+        };
+
+        const todayContent = todayEvents.length
+          ? `<div class="walk-compact-list">${todayEvents.map(renderEventRow).join('')}</div>`
+          : '<p class="muted">Сегодня событий пока нет.</p>';
+
+        const archiveDays = Array.from(archiveByDay.keys()).sort((a, b) => b.localeCompare(a));
+        const archiveContent = archiveDays.length
+          ? archiveDays.map((dayKey) => `
+              <div>
+                <h4 class="archive-day-title">${formatDateRu(dayKey)}</h4>
+                <div class="walk-compact-list">${(archiveByDay.get(dayKey) || []).map(renderEventRow).join('')}</div>
+              </div>
+            `).join('')
+          : '<p class="muted">Архив пуст.</p>';
+
+        listEl.innerHTML = `
+          <h4 class="walk-list-section-title">Сегодня</h4>
+          ${todayContent}
+          <div class="archive-block">
+            <h4 class="walk-list-section-title" style="margin-top: 0;">История</h4>
+            <details>
+              <summary class="archive-toggle">Показать архив по дням</summary>
+              ${archiveContent}
+            </details>
+          </div>
+        `;
       }
 
       function toggleEventForm(show) {
@@ -2576,10 +2750,24 @@
           <div class="row"><button class="back-btn" id="backToProfileBtn" type="button">← Назад</button></div>
           <h3>События</h3>
           <div id="eventStatus" class="status hidden"></div>
+
+          <div class="walk-hero">
+            <div class="walk-metrics" style="margin-top: 0;">
+              <div class="walk-metric-row">
+                <span class="walk-metric-label">Сегодня событий:</span>
+                <strong id="eventTodayCount">0</strong>
+              </div>
+              <div class="walk-metric-row">
+                <span class="walk-metric-label">Последняя запись:</span>
+                <strong id="eventLatestValue">—</strong>
+              </div>
+            </div>
+          </div>
+
           <div id="eventsList"></div>
 
           <div class="row">
-            <button id="showEventFormBtn" type="button" class="primary">+ Добавить событие</button>
+            <button id="showEventFormBtn" type="button" class="ghost-btn">Добавить вручную</button>
           </div>
 
           <div id="eventForm" class="hidden">
