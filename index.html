@@ -658,6 +658,17 @@
       }
 
       function buildSummaryRows(summary) {
+        function isToday(value) {
+          if (!value) return false;
+          const parsed = new Date(value);
+          if (Number.isNaN(parsed.getTime())) return false;
+
+          const now = new Date();
+          return parsed.getFullYear() === now.getFullYear()
+            && parsed.getMonth() === now.getMonth()
+            && parsed.getDate() === now.getDate();
+        }
+
         const weight = summary.latest_weight
           ? `${Number(summary.latest_weight.weight).toFixed(1)} кг · ${formatDateShort(summary.latest_weight.date).slice(0, 5)}`
           : '—';
@@ -670,13 +681,13 @@
         const worms = summary.latest_treatment_worms
           ? `${summary.latest_treatment_worms.product_name} · ${formatDateShort(summary.latest_treatment_worms.date_given).slice(0, 5)}`
           : '—';
-        const walk = summary.latest_walk
+        const walk = summary.latest_walk && isToday(summary.latest_walk.started_at)
           ? `${formatDateTimeShort(summary.latest_walk.started_at)} · ${summary.latest_walk.duration_min} мин`
           : '—';
-        const event = summary.latest_event
+        const event = summary.latest_event && isToday(summary.latest_event.event_date)
           ? `${summary.latest_event.title} · ${formatDateTimeShort(summary.latest_event.event_date)}`
           : '—';
-        const feeding = summary.latest_feeding
+        const feeding = summary.latest_feeding && isToday(summary.latest_feeding.fed_at)
           ? `${formatDateTimeShort(summary.latest_feeding.fed_at)}`
           : '—';
 
