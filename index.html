@@ -160,37 +160,89 @@
         color: var(--hint);
         font-size: 14px;
       }
-      .walk-summary {
-        margin: 10px 0 12px;
-        padding: 12px 14px;
-        border-radius: 12px;
-        background: color-mix(in srgb, var(--btn) 10%, var(--card));
-        border: 1px solid color-mix(in srgb, var(--btn) 24%, var(--border));
-        font-size: 14px;
-        font-weight: 600;
+      .walk-hero {
+        margin: 12px 0 16px;
+        padding: 18px;
+        border-radius: var(--radius);
+        background: var(--card);
+        box-shadow: var(--shadow);
+        border: 1px solid var(--border);
       }
-      .walk-summary-title {
-        font-size: 12px;
-        color: var(--hint);
-        margin-bottom: 4px;
-        text-transform: uppercase;
-        letter-spacing: .04em;
+      .walk-timer-value {
+        font-size: 40px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        line-height: 1.1;
+        margin: 0 0 14px;
       }
-      .walk-summary-value {
+      .walk-timer-btn {
+        width: 100%;
+        min-height: 52px;
         font-size: 18px;
         font-weight: 700;
+        border-radius: 14px;
+      }
+      .walk-metrics {
+        margin-top: 14px;
+        display: grid;
+        gap: 8px;
+      }
+      .walk-metric-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        font-size: 14px;
+      }
+      .walk-metric-label {
+        color: var(--hint);
       }
       .walk-list-section-title {
         margin: 14px 0 8px;
-        font-size: 14px;
+        font-size: 16px;
         font-weight: 700;
+      }
+      .walk-compact-list {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--card);
+        overflow: hidden;
+      }
+      .walk-compact-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: start;
+        padding: 10px 12px;
+        border-top: 1px solid var(--border);
+      }
+      .walk-compact-row:first-child {
+        border-top: 0;
+      }
+      .walk-time-line {
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .walk-notes {
+        margin-top: 2px;
+        font-size: 12px;
+        color: var(--hint);
+      }
+      .walk-delete-btn {
+        min-width: 32px;
+        min-height: 32px;
+        padding: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--hint);
+        border: 1px solid var(--border);
+        font-size: 14px;
       }
       .archive-block {
         margin-top: 12px;
         padding: 12px;
         border-radius: 12px;
         border: 1px solid var(--border);
-        background: color-mix(in srgb, var(--card) 86%, var(--secondary-bg));
+        background: var(--card);
       }
       .archive-toggle {
         width: 100%;
@@ -209,6 +261,13 @@
         margin: 14px 0 8px;
         font-size: 14px;
         font-weight: 700;
+      }
+      .ghost-btn {
+        width: 100%;
+        background: transparent;
+        color: var(--text);
+        border: 1px dashed var(--border);
+        font-weight: 600;
       }
       @keyframes loadingPulse {
         0%,
@@ -1756,6 +1815,8 @@
 
       function renderWalksList(walks) {
         const listEl = document.getElementById('walksList');
+        const todayMinutesEl = document.getElementById('walkTodayMinutes');
+        const latestWalkEl = document.getElementById('walkLatestValue');
         if (!listEl) return;
 
         const todayKey = getDateKey(new Date().toISOString());
@@ -1772,22 +1833,33 @@
           archiveByDay.get(walkDayKey).push(walk);
         });
 
-        const renderWalkCard = (walk) => {
-          const notesText = walk.notes ? `<div class="muted">Заметка: ${walk.notes}</div>` : '';
+        const renderWalkRow = (walk) => {
+          const notesText = walk.notes ? `<div class="walk-notes">${walk.notes}</div>` : '';
           return `
-            <div class="pet-card">
-              <strong>${formatDateTimeRu(walk.started_at)} — ${walk.duration_min} мин</strong>
-              ${notesText}
-              <div class="row">
-                <button class="icon-btn danger-btn" data-delete-walk-id="${walk.id}" type="button">🗑 Удалить</button>
+            <div class="walk-compact-row">
+              <div>
+                <div class="walk-time-line">${formatTimeOnly(walk.started_at)} — ${walk.duration_min} мин</div>
+                ${notesText}
               </div>
+              <button class="walk-delete-btn" data-delete-walk-id="${walk.id}" type="button" aria-label="Удалить запись">🗑</button>
             </div>
           `;
         };
 
         const todayTotalMinutes = todayWalks.reduce((sum, walk) => sum + (Number(walk.duration_min) || 0), 0);
+        if (todayMinutesEl) {
+          todayMinutesEl.innerText = formatMinutesDuration(todayTotalMinutes);
+        }
+
+        const latestWalk = walks[0];
+        if (latestWalkEl) {
+          latestWalkEl.innerText = latestWalk
+            ? `${formatTimeOnly(latestWalk.started_at)} — ${latestWalk.duration_min} мин`
+            : '—';
+        }
+
         const todayContent = todayWalks.length
-          ? todayWalks.map(renderWalkCard).join('')
+          ? `<div class="walk-compact-list">${todayWalks.map(renderWalkRow).join('')}</div>`
           : '<p class="muted">Сегодня прогулок пока нет.</p>';
 
         const archiveDays = Array.from(archiveByDay.keys()).sort((a, b) => b.localeCompare(a));
@@ -1799,7 +1871,7 @@
               return `
                 <div>
                   <h4 class="archive-day-title">${formatDateRu(dayKey)} · ${formatMinutesDuration(dayTotalMinutes)}</h4>
-                  ${dayWalks.map(renderWalkCard).join('')}
+                  <div class="walk-compact-list">${dayWalks.map(renderWalkRow).join('')}</div>
                 </div>
               `;
             })
@@ -1807,16 +1879,12 @@
           : '<p class="muted">Архив пуст.</p>';
 
         listEl.innerHTML = `
-          <div class="walk-summary">
-            <div class="walk-summary-title">Дневная сводка</div>
-            <div class="walk-summary-value">${formatMinutesDuration(todayTotalMinutes)}</div>
-          </div>
           <h4 class="walk-list-section-title">Сегодня</h4>
           ${todayContent}
           <div class="archive-block">
             <h4 class="walk-list-section-title" style="margin-top: 0;">История</h4>
             <details>
-              <summary class="archive-toggle">📁 Показать архив по дням</summary>
+              <summary class="archive-toggle">Показать архив по дням</summary>
               ${archiveContent}
             </details>
           </div>
@@ -1850,22 +1918,29 @@
 
       async function renderWalksScreen(petId) {
         screenSectionEl.innerHTML = `
-          <div class="row"><button class="back-btn" id="backToProfileBtn" type="button">← Назад</button></div>
-          <h3>Прогулка</h3>
+          <div><button class="back-btn" id="backToProfileBtn" type="button">← Назад</button></div>
+          <h3 style="margin: 12px 0 0;">Прогулка</h3>
           <div id="walkStatus" class="status hidden"></div>
 
-          <div class="pet-card">
-            <strong>Таймер</strong>
-            <div id="walkTimerValue" class="muted" style="margin-top: 6px;">Идёт: 00:00:00</div>
-            <div class="row">
-              <button id="walkTimerBtn" type="button" class="primary">▶ Старт</button>
+          <div class="walk-hero">
+            <div id="walkTimerValue" class="walk-timer-value">00:00:00</div>
+            <button id="walkTimerBtn" type="button" class="primary walk-timer-btn">▶ Старт</button>
+            <div class="walk-metrics">
+              <div class="walk-metric-row">
+                <span class="walk-metric-label">Сегодня:</span>
+                <strong id="walkTodayMinutes">0 мин</strong>
+              </div>
+              <div class="walk-metric-row">
+                <span class="walk-metric-label">Последняя прогулка:</span>
+                <strong id="walkLatestValue">—</strong>
+              </div>
             </div>
           </div>
 
           <div id="walksList"></div>
 
           <div class="row">
-            <button id="showWalkFormBtn" type="button" class="primary">+ Добавить вручную</button>
+            <button id="showWalkFormBtn" type="button" class="ghost-btn">Добавить вручную</button>
           </div>
 
           <div id="walkManualForm" class="hidden">
@@ -1896,14 +1971,14 @@
         const syncTimerUi = () => {
           const isRunning = activeWalkTimer && activeWalkTimer.petId === petId && activeWalkTimer.startMs;
           if (!isRunning) {
-            timerValueEl.innerText = 'Идёт: 00:00:00';
+            timerValueEl.innerText = '00:00:00';
             timerBtn.innerText = '▶ Старт';
             return;
           }
 
           const elapsedSec = Math.floor((Date.now() - activeWalkTimer.startMs) / 1000);
-          timerValueEl.innerText = `Идёт: ${formatDurationHms(elapsedSec)}`;
-          timerBtn.innerText = '⏹ Стоп';
+          timerValueEl.innerText = formatDurationHms(elapsedSec);
+          timerBtn.innerText = '■ Стоп';
         };
 
         const startTimer = () => {
