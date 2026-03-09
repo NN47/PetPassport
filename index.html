@@ -831,8 +831,8 @@
         const worms = summary.latest_treatment_worms
           ? `${summary.latest_treatment_worms.product_name} · ${formatDateShort(summary.latest_treatment_worms.date_given).slice(0, 5)}`
           : '—';
-        const walk = summary.latest_walk && isToday(summary.latest_walk.started_at)
-          ? `${formatDateTimeShort(summary.latest_walk.started_at)} · ${summary.latest_walk.duration_min} мин`
+        const walk = Number(summary.total_walk_duration_today_min) > 0
+          ? `${Number(summary.total_walk_duration_today_min)} мин за день`
           : '—';
         const event = summary.latest_event && isToday(summary.latest_event.event_date)
           ? `${summary.latest_event.title} · ${formatDateTimeShort(summary.latest_event.event_date)}`
