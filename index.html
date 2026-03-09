@@ -24,6 +24,21 @@
       body { background: var(--bg); color: var(--text); margin: 0; font-family: system-ui, sans-serif; }
       .card { border-radius: calc(var(--radius) + 2px); padding: 16px 16px 24px; background: transparent; max-width: 520px; margin: 0 auto; box-sizing: border-box; }
       .card.with-bottom-bar { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+      input,
+      textarea,
+      select,
+      button {
+        font-size: 16px;
+      }
+      input,
+      textarea,
+      select {
+        line-height: 1.2;
+        transform: none !important;
+        zoom: 1;
+        -webkit-text-size-adjust: 100%;
+      }
+      textarea { resize: none; }
       button { padding: 12px 14px; border-radius: 12px; border: 1px solid transparent; cursor: pointer; }
       .pet-card { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-top: 10px; cursor: pointer; background: var(--card-bg); }
       .pet-type { font-size: 13px; color: var(--hint); }
@@ -33,7 +48,7 @@
       .row { display: flex; gap: 8px; margin-top: 10px; }
       .type-btn { background: var(--secondary-bg); color: var(--text); }
       .type-btn.active { background: var(--btn); color: var(--btnText); }
-      .field { width: 100%; box-sizing: border-box; margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card-bg); color: var(--text); }
+      .field { width: 100%; box-sizing: border-box; margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card-bg); color: var(--text); font-size: 16px !important; }
       .error { color: #b42318; margin-top: 8px; font-size: 14px; }
       .back-btn {
         display: inline-flex;
@@ -44,7 +59,7 @@
         border: 1px solid var(--border);
         background: var(--card);
         color: var(--text);
-        font-size: 14px;
+        font-size: 16px;
         font-weight: 500;
       }
       .back-btn:hover {
@@ -68,7 +83,7 @@
       .summary-value { color: var(--text); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .summary-value.empty { color: var(--hint); }
       .pet-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: var(--gap); }
-      .icon-btn { background: var(--card); color: var(--text); padding: 8px 10px; font-size: 14px; border: 1px solid var(--border); }
+      .icon-btn { background: var(--card); color: var(--text); padding: 8px 10px; font-size: 16px; border: 1px solid var(--border); }
       .danger-btn { background: color-mix(in srgb, #dc3545 18%, var(--card)); color: #b42318; border-color: color-mix(in srgb, #dc3545 36%, var(--border)); }
       .pet-hero { min-height: 160px; border-radius: var(--radius); background: linear-gradient(160deg, color-mix(in srgb, var(--btn) 22%, var(--card)) 0%, var(--card) 100%); box-shadow: var(--shadow); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; position: relative; text-align: center; margin-bottom: var(--gap); }
       .pet-hero.cat { background: linear-gradient(160deg, color-mix(in srgb, #ffbe7d 38%, var(--card)) 0%, var(--card) 100%); }
@@ -85,7 +100,7 @@
         background: color-mix(in srgb, var(--card) 94%, transparent);
         color: var(--text);
         border: 1px solid var(--border);
-        font-size: 13px;
+        font-size: 16px;
         font-weight: 600;
       }
       .pet-avatar-wrap { width: 72px; height: 72px; border-radius: 50%; background: var(--card); display: grid; place-items: center; box-shadow: 0 4px 14px rgba(0, 0, 0, .08); overflow: hidden; }
@@ -276,7 +291,7 @@
         align-items: center;
         justify-content: center;
         gap: 8px;
-        font-size: 15px;
+        font-size: 16px;
         border: 1px solid transparent;
         min-width: 0;
         width: 100%;
