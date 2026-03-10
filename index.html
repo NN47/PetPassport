@@ -208,6 +208,16 @@
         font-weight: 700;
         border-radius: 14px;
       }
+      .walk-manual-btn {
+        width: 100%;
+        margin-top: 10px;
+        min-height: 46px;
+        font-weight: 700;
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--btn) 18%, var(--card));
+        color: var(--text);
+        border: 1px solid color-mix(in srgb, var(--btn) 45%, var(--border));
+      }
       .walk-metrics {
         margin-top: 14px;
         display: grid;
@@ -2092,6 +2102,7 @@
           <div class="walk-hero">
             <div id="walkTimerValue" class="walk-timer-value">00:00:00</div>
             <button id="walkTimerBtn" type="button" class="primary walk-timer-btn">▶ Старт</button>
+            <button id="showWalkFormBtn" type="button" class="walk-manual-btn">✍️ Добавить вручную</button>
             <div class="walk-metrics">
               <div class="walk-metric-row">
                 <span class="walk-metric-label">Сегодня:</span>
@@ -2105,10 +2116,6 @@
           </div>
 
           <div id="walksList"></div>
-
-          <div class="row">
-            <button id="showWalkFormBtn" type="button" class="ghost-btn">Добавить вручную</button>
-          </div>
 
           <div id="walkManualForm" class="hidden">
             <label class="label" for="walkStartedAt">Дата и время начала</label>
