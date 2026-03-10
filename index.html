@@ -225,6 +225,24 @@
         display: grid;
         gap: 8px;
       }
+      .walk-manual-form {
+        margin: 0 0 16px;
+        padding: 18px;
+        border-radius: var(--radius);
+        background: var(--card);
+        box-shadow: var(--shadow);
+        border: 1px solid var(--border);
+      }
+      .walk-manual-form-title {
+        margin: 0 0 6px;
+        font-size: 16px;
+        font-weight: 700;
+      }
+      .walk-manual-form-subtitle {
+        margin: 0;
+        font-size: 13px;
+        color: var(--hint);
+      }
       .walk-metric-row {
         display: flex;
         justify-content: space-between;
@@ -2117,9 +2135,10 @@
             </div>
           </div>
 
-          <div id="walksList"></div>
+          <div id="walkManualForm" class="walk-manual-form hidden">
+            <h4 class="walk-manual-form-title">Добавить прогулку вручную</h4>
+            <p class="walk-manual-form-subtitle">Заполните данные прогулки, если не использовали таймер.</p>
 
-          <div id="walkManualForm" class="hidden">
             <label class="label" for="walkStartedAt">Дата и время начала</label>
             <input id="walkStartedAt" class="field" type="datetime-local" />
 
@@ -2134,6 +2153,8 @@
               <button id="cancelWalkBtn" type="button" class="back-btn">Отмена</button>
             </div>
           </div>
+
+          <div id="walksList"></div>
         `;
 
         const timerValueEl = document.getElementById('walkTimerValue');
