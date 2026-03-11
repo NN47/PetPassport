@@ -74,6 +74,10 @@
       .back-btn:active {
         transform: translateY(1px);
       }
+      .use-telegram-back .back-btn.nav-back,
+      .use-telegram-back #btnBack {
+        display: none;
+      }
       .status { margin-top: 10px; padding: 10px 12px; border-radius: 10px; font-size: 14px; }
       .status.success { background: #e8f8ef; color: #0f5132; border: 1px solid #b7ebcc; }
       .status.error { background: #fdecec; color: #842029; border: 1px solid #f5c2c7; }
@@ -607,6 +611,11 @@
 
       const user = tg.initDataUnsafe?.user;
       const tgInitData = tg.initData || '';
+      let telegramBackHandler = null;
+
+      if (tgInitData) {
+        document.body.classList.add('use-telegram-back');
+      }
 
       const userEl = document.getElementById('u');
       const petsEl = document.getElementById('pets');
@@ -757,13 +766,30 @@
         screenSectionEl.classList.toggle('hidden', screen !== 'section');
       }
 
+      function setTelegramBackButton(handler) {
+        if (!tg.BackButton) return;
+
+        if (telegramBackHandler) {
+          tg.BackButton.offClick(telegramBackHandler);
+          telegramBackHandler = null;
+        }
+
+        if (!tgInitData || typeof handler !== 'function') {
+          tg.BackButton.hide();
+          return;
+        }
+
+        telegramBackHandler = handler;
+        tg.BackButton.onClick(telegramBackHandler);
+        tg.BackButton.show();
+      }
+
       function updateBottomBar(route) {
         const petRouteMatch = route.match(/^pet\/(\d+)(?:\/(.+))?$/);
         const isPetProfileRoute = Boolean(petRouteMatch && !petRouteMatch[2]);
 
         bottomBarEl.classList.toggle('hidden', !isPetProfileRoute);
         cardEl.classList.toggle('with-bottom-bar', isPetProfileRoute);
-        btnBack.disabled = !isPetProfileRoute;
         btnAddRecord.disabled = !isPetProfileRoute;
       }
 
@@ -1128,7 +1154,7 @@
 
         const sectionText = sectionLabel[section] || section;
         screenSectionEl.innerHTML = `
-          <div class="row"><button class="back-btn" id="backToProfileBtn">← Назад в профиль</button></div>
+          <div class="row"><button class="back-btn nav-back" id="backToProfileBtn">← Назад в профиль</button></div>
           <h3>${sectionText}</h3>
           <p class="muted">Скоро будет раздел ${sectionText}</p>
         `;
@@ -1272,7 +1298,7 @@
 
       async function renderVaccinationsScreen(petId) {
         screenSectionEl.innerHTML = `
-          <div><button class="back-btn" id="backToProfileBtn">← Назад</button></div>
+          <div><button class="back-btn nav-back" id="backToProfileBtn">← Назад</button></div>
           <h3 style="margin: 12px 0 0;">Вакцинация</h3>
           <div id="vaccinationStatus" class="status hidden"></div>
 
@@ -1523,7 +1549,7 @@
         let currentType = initialType === 'worms' ? 'worms' : 'fleas';
 
         screenSectionEl.innerHTML = `
-          <div><button class="back-btn" id="backToProfileBtn">← Назад</button></div>
+          <div><button class="back-btn nav-back" id="backToProfileBtn">← Назад</button></div>
           <h3 style="margin: 12px 0 0;">Обработка</h3>
 
           <div class="health-hero">
@@ -1826,7 +1852,7 @@
 
       async function renderWeightsScreen(petId) {
         screenSectionEl.innerHTML = `
-          <div class="row"><button class="back-btn" id="backToProfileBtn">← Назад</button></div>
+          <div class="row"><button class="back-btn nav-back" id="backToProfileBtn">← Назад</button></div>
           <h3>Вес</h3>
           <div id="weightStatus" class="status hidden"></div>
 
@@ -2131,7 +2157,7 @@
 
       async function renderWalksScreen(petId) {
         screenSectionEl.innerHTML = `
-          <div><button class="back-btn" id="backToProfileBtn" type="button">← Назад</button></div>
+          <div><button class="back-btn nav-back" id="backToProfileBtn" type="button">← Назад</button></div>
           <h3 style="margin: 12px 0 0;">Прогулка</h3>
           <div id="walkStatus" class="status hidden"></div>
 
@@ -2479,7 +2505,7 @@
 
       async function renderFeedingsScreen(petId) {
         screenSectionEl.innerHTML = `
-          <div class="row"><button class="back-btn" id="backToProfileBtn" type="button">← Назад</button></div>
+          <div class="row"><button class="back-btn nav-back" id="backToProfileBtn" type="button">← Назад</button></div>
           <h3>Питание</h3>
           <div id="feedingStatus" class="status hidden"></div>
 
@@ -2604,7 +2630,7 @@
 
       async function renderCalendarScreen(petId) {
         screenSectionEl.innerHTML = `
-          <div class="row"><button class="back-btn" id="backToProfileBtn" type="button">← Назад</button></div>
+          <div class="row"><button class="back-btn nav-back" id="backToProfileBtn" type="button">← Назад</button></div>
           <div class="route-header"><span class="route-title">Календарь</span></div>
           <div id="calendarStatus" class="status hidden"></div>
           <div id="calendarList" class="calendar-shell"><div class="muted">Загрузка календаря...</div></div>
@@ -2899,7 +2925,7 @@
 
       async function renderEventsScreen(petId) {
         screenSectionEl.innerHTML = `
-          <div class="row"><button class="back-btn" id="backToProfileBtn" type="button">← Назад</button></div>
+          <div class="row"><button class="back-btn nav-back" id="backToProfileBtn" type="button">← Назад</button></div>
           <h3>События</h3>
           <div id="eventStatus" class="status hidden"></div>
 
@@ -3134,7 +3160,7 @@
 
       async function renderPetInfoScreen(petId) {
         screenSectionEl.innerHTML = `
-          <div class="row"><button class="back-btn" id="backToProfileBtn">← Назад</button></div>
+          <div class="row"><button class="back-btn nav-back" id="backToProfileBtn">← Назад</button></div>
           <h3>Информация о питомце</h3>
           <label class="label" for="infoNameInput">Имя</label>
           <input id="infoNameInput" class="field" type="text" maxlength="64" />
@@ -3249,6 +3275,7 @@
 
       async function renderRoute() {
         if (!tgInitData) {
+          setTelegramBackButton(null);
           showScreen('list');
           return;
         }
@@ -3260,11 +3287,13 @@
         updateBottomBar(route);
 
         if (route === 'list') {
+          setTelegramBackButton(null);
           showScreen('list');
           return;
         }
 
         if (route === 'add') {
+          setTelegramBackButton(() => setHash('#list'));
           showScreen('add');
           return;
         }
@@ -3276,6 +3305,12 @@
 
         const petId = petRouteMatch[1];
         const section = petRouteMatch[2];
+
+        if (section) {
+          setTelegramBackButton(() => setHash(`#pet/${petId}`));
+        } else {
+          setTelegramBackButton(() => setHash('#list'));
+        }
 
         if (section) {
           renderLoadingState(screenSectionEl, 'Загружаем раздел...');
@@ -3333,17 +3368,6 @@
           showScreen('list');
         }
       }
-
-      btnBack.addEventListener('click', () => {
-        const petRoute = getCurrentPetRoute();
-        if (petRoute) {
-          setHash('#list');
-          return;
-        }
-        if ((window.location.hash || '#list') === '#add') {
-          setHash('#list');
-        }
-      });
       btnAddRecord.addEventListener('click', () => {
         const petRoute = getCurrentPetRoute();
         if (!petRoute) {
