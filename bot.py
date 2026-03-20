@@ -762,8 +762,7 @@ async def start_handler(message: types.Message):
     hello_name = first_name or "друг"
     await message.answer(
         f"Привет, {hello_name}! 🐶🐱\n\n"
-        "Это дневник питомца.\n"
-        "Скоро здесь можно будет добавить собакена или котофея."
+        "Добро пожаловать в дневник питомца!"
     )
     await message.answer("Открывай дневник 👇", reply_markup=kb)
 
