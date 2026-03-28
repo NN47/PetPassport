@@ -112,35 +112,45 @@
         font-size: 16px;
         font-weight: 700;
       }
-      .pets-report-pet {
-        border-top: 1px solid var(--border);
-        padding-top: 10px;
-        margin-top: 10px;
+      .pets-report-table-wrap {
+        overflow-x: auto;
       }
-      .pets-report-pet:first-of-type {
-        border-top: 0;
-        padding-top: 0;
-        margin-top: 0;
+      .pets-report-table {
+        width: 100%;
+        min-width: 420px;
+        border-collapse: collapse;
+        font-size: 14px;
       }
-      .pets-report-pet-title {
-        margin: 0 0 6px;
+      .pets-report-table th,
+      .pets-report-table td {
+        border: 1px solid var(--border);
+        padding: 8px;
+        text-align: center;
+      }
+      .pets-report-table thead th {
+        background: color-mix(in srgb, var(--card) 80%, var(--bg));
+        white-space: nowrap;
         font-weight: 700;
       }
-      .pets-report-row {
-        display: grid;
-        grid-template-columns: 120px minmax(0, 1fr);
-        gap: 8px;
-        font-size: 14px;
-        margin-top: 4px;
+      .pets-report-table th:first-child,
+      .pets-report-table td:first-child {
+        text-align: left;
+        min-width: 140px;
       }
-      .pets-report-label {
+      .pets-report-mark {
+        font-size: 18px;
+        line-height: 1;
+      }
+      .pets-report-mark.ok {
+        color: #15803d;
+      }
+      .pets-report-mark.bad {
+        color: #b42318;
+      }
+      .pets-report-mark.empty {
         color: var(--hint);
       }
-      .pets-report-value {
-        color: var(--text);
-        text-align: right;
-      }
-      .pets-report-value.empty {
+      .pets-report-weight-empty {
         color: var(--hint);
       }
       .pet-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: var(--gap); }
@@ -860,38 +870,59 @@
           return;
         }
 
-        const reportItems = pets.map((pet) => {
-          const summary = summaries.get(String(pet.id)) || {};
-          const vaccination = summary.latest_vaccination
-            ? `${summary.latest_vaccination.vaccine_name || 'Вакцина'} · ${formatDateShort(summary.latest_vaccination.date_given)}`
-            : '—';
-          const fleas = summary.latest_treatment_fleas
-            ? `${summary.latest_treatment_fleas.product_name || 'Препарат'} · ${formatDateShort(summary.latest_treatment_fleas.date_given)}`
-            : '—';
-          const worms = summary.latest_treatment_worms
-            ? `${summary.latest_treatment_worms.product_name || 'Препарат'} · ${formatDateShort(summary.latest_treatment_worms.date_given)}`
-            : '—';
-          const weight = summary.latest_weight
-            ? `${Number(summary.latest_weight.weight).toFixed(1)} кг · ${formatDateShort(summary.latest_weight.date)}`
-            : '—';
+        const getDateKey = (value) => {
+          if (!value || typeof value !== 'string') return null;
+          return value.slice(0, 10);
+        };
 
-          const valueClass = (value) => value === '—' ? 'pets-report-value empty' : 'pets-report-value';
+        const todayKey = new Date().toISOString().slice(0, 10);
+        const renderStatusMark = (item) => {
+          const nextDueKey = getDateKey(item?.next_due);
+          if (!nextDueKey) return '<span class="pets-report-mark empty">—</span>';
+          if (nextDueKey < todayKey) return '<span class="pets-report-mark bad">✖</span>';
+          return '<span class="pets-report-mark ok">✔</span>';
+        };
+
+        const reportRows = pets.map((pet) => {
+          const summary = summaries.get(String(pet.id)) || {};
+          const vaccination = renderStatusMark(summary.latest_vaccination);
+          const fleas = renderStatusMark(summary.latest_treatment_fleas);
+          const worms = renderStatusMark(summary.latest_treatment_worms);
+          const weight = summary.latest_weight?.weight;
+          const weightValue = Number.isFinite(Number(weight))
+            ? `${Number(weight).toFixed(1)} кг`
+            : '<span class="pets-report-weight-empty">—</span>';
 
           return `
-            <div class="pets-report-pet">
-              <p class="pets-report-pet-title">${pet.name}</p>
-              <div class="pets-report-row"><span class="pets-report-label">Вакцинация</span><span class="${valueClass(vaccination)}">${vaccination}</span></div>
-              <div class="pets-report-row"><span class="pets-report-label">От блох</span><span class="${valueClass(fleas)}">${fleas}</span></div>
-              <div class="pets-report-row"><span class="pets-report-label">От гельминтов</span><span class="${valueClass(worms)}">${worms}</span></div>
-              <div class="pets-report-row"><span class="pets-report-label">Вес</span><span class="${valueClass(weight)}">${weight}</span></div>
-            </div>
+            <tr>
+              <td>${pet.name}</td>
+              <td>${vaccination}</td>
+              <td>${fleas}</td>
+              <td>${worms}</td>
+              <td>${weightValue}</td>
+            </tr>
           `;
         }).join('');
 
         petsReportEl.innerHTML = `
           <div class="pets-report-card">
             <p class="pets-report-title">Общий отчет по питомцам</p>
-            ${reportItems}
+            <div class="pets-report-table-wrap">
+              <table class="pets-report-table">
+                <thead>
+                  <tr>
+                    <th>Питомец</th>
+                    <th>Вакцинация</th>
+                    <th>От блох</th>
+                    <th>От гельминтов</th>
+                    <th>Вес</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${reportRows}
+                </tbody>
+              </table>
+            </div>
           </div>
         `;
       }
