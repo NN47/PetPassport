@@ -99,6 +99,50 @@
       .summary-label { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .summary-value { color: var(--text); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .summary-value.empty { color: var(--hint); }
+      .pets-report-card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        padding: 14px;
+        margin-top: 12px;
+      }
+      .pets-report-title {
+        margin: 0 0 10px;
+        font-size: 16px;
+        font-weight: 700;
+      }
+      .pets-report-pet {
+        border-top: 1px solid var(--border);
+        padding-top: 10px;
+        margin-top: 10px;
+      }
+      .pets-report-pet:first-of-type {
+        border-top: 0;
+        padding-top: 0;
+        margin-top: 0;
+      }
+      .pets-report-pet-title {
+        margin: 0 0 6px;
+        font-weight: 700;
+      }
+      .pets-report-row {
+        display: grid;
+        grid-template-columns: 120px minmax(0, 1fr);
+        gap: 8px;
+        font-size: 14px;
+        margin-top: 4px;
+      }
+      .pets-report-label {
+        color: var(--hint);
+      }
+      .pets-report-value {
+        color: var(--text);
+        text-align: right;
+      }
+      .pets-report-value.empty {
+        color: var(--hint);
+      }
       .pet-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: var(--gap); }
       .icon-btn { background: var(--card); color: var(--text); padding: 8px 10px; font-size: 16px; border: 1px solid var(--border); }
       .danger-btn { background: color-mix(in srgb, #dc3545 18%, var(--card)); color: #b42318; border-color: color-mix(in srgb, #dc3545 36%, var(--border)); }
@@ -558,6 +602,7 @@
       <div id="screenList">
         <img src="/assets/pets.png" class="pets-header" alt="PetPass" />
         <button id="addPetListBtn" class="primary add-pet-btn" type="button">+ Добавить питомца</button>
+        <div id="petsReport"></div>
         <div id="pets"></div>
       </div>
 
@@ -619,6 +664,7 @@
 
       const userEl = document.getElementById('u');
       const petsEl = document.getElementById('pets');
+      const petsReportEl = document.getElementById('petsReport');
       const addPetListBtn = document.getElementById('addPetListBtn');
       const formEl = document.getElementById('createPetForm');
       const petNameInput = document.getElementById('petNameInput');
@@ -808,9 +854,52 @@
         window.location.hash = nextHash;
       }
 
+      function renderPetsReport(pets, summaries = new Map()) {
+        if (!pets.length) {
+          petsReportEl.innerHTML = '';
+          return;
+        }
+
+        const reportItems = pets.map((pet) => {
+          const summary = summaries.get(String(pet.id)) || {};
+          const vaccination = summary.latest_vaccination
+            ? `${summary.latest_vaccination.vaccine_name || 'Вакцина'} · ${formatDateShort(summary.latest_vaccination.date_given)}`
+            : '—';
+          const fleas = summary.latest_treatment_fleas
+            ? `${summary.latest_treatment_fleas.product_name || 'Препарат'} · ${formatDateShort(summary.latest_treatment_fleas.date_given)}`
+            : '—';
+          const worms = summary.latest_treatment_worms
+            ? `${summary.latest_treatment_worms.product_name || 'Препарат'} · ${formatDateShort(summary.latest_treatment_worms.date_given)}`
+            : '—';
+          const weight = summary.latest_weight
+            ? `${Number(summary.latest_weight.weight).toFixed(1)} кг · ${formatDateShort(summary.latest_weight.date)}`
+            : '—';
+
+          const valueClass = (value) => value === '—' ? 'pets-report-value empty' : 'pets-report-value';
+
+          return `
+            <div class="pets-report-pet">
+              <p class="pets-report-pet-title">${pet.name}</p>
+              <div class="pets-report-row"><span class="pets-report-label">Вакцинация</span><span class="${valueClass(vaccination)}">${vaccination}</span></div>
+              <div class="pets-report-row"><span class="pets-report-label">От блох</span><span class="${valueClass(fleas)}">${fleas}</span></div>
+              <div class="pets-report-row"><span class="pets-report-label">От гельминтов</span><span class="${valueClass(worms)}">${worms}</span></div>
+              <div class="pets-report-row"><span class="pets-report-label">Вес</span><span class="${valueClass(weight)}">${weight}</span></div>
+            </div>
+          `;
+        }).join('');
+
+        petsReportEl.innerHTML = `
+          <div class="pets-report-card">
+            <p class="pets-report-title">Общий отчет по питомцам</p>
+            ${reportItems}
+          </div>
+        `;
+      }
+
       function renderPets(pets) {
         if (!pets.length) {
           petsEl.innerHTML = '<p class="muted">Питомцев пока нет.</p>';
+          renderPetsReport([]);
           return;
         }
 
@@ -854,6 +943,22 @@
 
         const data = await response.json();
         const pets = Array.isArray(data.pets) ? data.pets : [];
+        const summariesByPet = new Map();
+
+        await Promise.all(
+          pets.map(async (pet) => {
+            try {
+              const summary = await fetchPetSummary(pet.id);
+              if (summary) {
+                summariesByPet.set(String(pet.id), summary);
+              }
+            } catch (error) {
+              // Если сводку не удалось загрузить, просто не показываем её в общем отчёте.
+            }
+          }),
+        );
+
+        renderPetsReport(pets, summariesByPet);
         renderPets(pets);
       }
 
