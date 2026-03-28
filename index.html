@@ -3394,6 +3394,12 @@
         if (route === 'list') {
           setTelegramBackButton(null);
           showScreen('list');
+          try {
+            await loadPets();
+          } catch (error) {
+            userEl.innerText = 'Не удалось обновить список питомцев.';
+            renderPets([]);
+          }
           return;
         }
 
@@ -3462,7 +3468,6 @@
         userEl.innerText = `Привет, ${firstName}!`;
 
         try {
-          await loadPets();
           if (!window.location.hash) {
             window.location.hash = '#list';
           }
