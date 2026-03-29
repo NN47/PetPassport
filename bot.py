@@ -307,13 +307,25 @@ async def check_and_send_reminders(bot_instance: Bot) -> None:
                 END AS kind
             FROM users u
             JOIN pets p ON p.user_id = u.id
-            JOIN treatments t ON t.pet_id = p.id
+            JOIN (
+                SELECT latest.*
+                FROM (
+                    SELECT
+                        t.*,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY t.pet_id, t.type
+                            ORDER BY t.date_given DESC, t.id DESC
+                        ) AS row_num
+                    FROM treatments t
+                    WHERE t.type IN ('fleas', 'worms')
+                ) latest
+                WHERE latest.row_num = 1
+            ) t ON t.pet_id = p.id
             LEFT JOIN user_settings us ON us.tg_user_id = u.tg_user_id
             WHERE t.{treatments_due_column} IS NOT NULL
               AND COALESCE(us.reminders_enabled, TRUE) = TRUE
               AND COALESCE(us.remind_time, '09:00') = %s
               AND t.{treatments_due_column}::date <= (CURRENT_DATE + COALESCE(us.remind_days, 3))
-              AND t.type IN ('fleas', 'worms')
             ORDER BY u.tg_user_id, p.name, t.{treatments_due_column}::date, t.id
             """,
             (now_hhmm,),
