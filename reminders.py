@@ -119,10 +119,22 @@ def fetch_pending_reminders(conn) -> dict[int, dict[str, list[ReminderItem]]]:
                 END AS kind
             FROM users u
             JOIN pets p ON p.user_id = u.id
-            JOIN treatments t ON t.pet_id = p.id
+            JOIN (
+                SELECT latest.*
+                FROM (
+                    SELECT
+                        t.*,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY t.pet_id, t.type
+                            ORDER BY t.date_given DESC, t.id DESC
+                        ) AS row_num
+                    FROM treatments t
+                    WHERE t.type IN ('fleas', 'worms')
+                ) latest
+                WHERE latest.row_num = 1
+            ) t ON t.pet_id = p.id
             WHERE t.{treatment_due_col} IS NOT NULL
               AND t.{treatment_due_col}::date <= (CURRENT_DATE + INTERVAL '3 day')::date
-              AND t.type IN ('fleas', 'worms')
               AND NOT EXISTS (
                     SELECT 1
                     FROM notification_log nl
