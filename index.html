@@ -117,15 +117,17 @@
       }
       .pets-report-table {
         width: 100%;
-        min-width: 420px;
         border-collapse: collapse;
-        font-size: 14px;
+        font-size: 13px;
+        table-layout: fixed;
       }
       .pets-report-table th,
       .pets-report-table td {
         border: 1px solid var(--border);
-        padding: 8px;
+        padding: 7px 6px;
         text-align: center;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
       .pets-report-table thead th {
         background: color-mix(in srgb, var(--card) 80%, var(--bg));
@@ -135,7 +137,8 @@
       .pets-report-table th:first-child,
       .pets-report-table td:first-child {
         text-align: left;
-        min-width: 140px;
+        width: 30%;
+        max-width: 120px;
       }
       .pets-report-mark {
         font-size: 18px;
@@ -912,9 +915,9 @@
                 <thead>
                   <tr>
                     <th>Питомец</th>
-                    <th>Вакцинация</th>
-                    <th>От блох</th>
-                    <th>От гельминтов</th>
+                    <th>Вакц.</th>
+                    <th>Блохи</th>
+                    <th>Гельм.</th>
                     <th>Вес</th>
                   </tr>
                 </thead>
