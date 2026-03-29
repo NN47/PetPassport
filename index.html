@@ -3428,6 +3428,8 @@
         if (route === 'list') {
           setTelegramBackButton(null);
           showScreen('list');
+          renderPetsReport([]);
+          renderLoadingState(petsEl, 'Загружаем питомцев...');
           try {
             await loadPets();
           } catch (error) {
