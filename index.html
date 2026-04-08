@@ -1347,6 +1347,23 @@
         }
       }
 
+      async function updateVaccination(petId, vaccinationId, payload) {
+        const response = await fetch(`/api/pets/${petId}/vaccinations/${vaccinationId}`, {
+          method: 'PATCH',
+          headers: getApiHeaders(),
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          const error = new Error(errData.error || 'Не удалось обновить вакцинацию');
+          error.status = response.status;
+          throw error;
+        }
+
+        return response.json();
+      }
+
       function setVaccinationStatus(type, message) {
         const statusEl = document.getElementById('vaccinationStatus');
         if (!statusEl) return;
@@ -1404,7 +1421,10 @@
                   ${nextDueText}
                   ${notesText}
                 </div>
-                <button class="walk-delete-btn" data-delete-vaccination-id="${item.id}" type="button" aria-label="Удалить запись">🗑</button>
+                <div style="display:flex; gap:8px;">
+                  <button class="walk-delete-btn" data-edit-vaccination-id="${item.id}" type="button" aria-label="Редактировать запись">✏️</button>
+                  <button class="walk-delete-btn" data-delete-vaccination-id="${item.id}" type="button" aria-label="Удалить запись">🗑</button>
+                </div>
               </div>
             `;
           })
@@ -1415,6 +1435,9 @@
 
       async function refreshVaccinations(petId) {
         const vaccinations = await fetchVaccinations(petId);
+        if (Array.isArray(vaccinations)) {
+          window.__petpassCurrentVaccinations = vaccinations;
+        }
         renderVaccinationsList(vaccinations);
       }
 
@@ -1434,6 +1457,7 @@
       }
 
       async function renderVaccinationsScreen(petId) {
+        let editingVaccinationId = null;
         screenSectionEl.innerHTML = `
           <div><button class="back-btn nav-back" id="backToProfileBtn">← Назад</button></div>
           <h3 style="margin: 12px 0 0;">Вакцинация</h3>
@@ -1474,6 +1498,7 @@
 
         document.getElementById('backToProfileBtn').addEventListener('click', () => setHash(`#pet/${petId}`));
         document.getElementById('showVaccinationFormBtn').addEventListener('click', () => {
+          editingVaccinationId = null;
           hideVaccinationStatus();
           toggleVaccinationForm(true);
         });
@@ -1486,6 +1511,21 @@
 
         document.getElementById('vaccinationsList').addEventListener('click', async (event) => {
           const deleteBtn = event.target.closest('[data-delete-vaccination-id]');
+          const editBtn = event.target.closest('[data-edit-vaccination-id]');
+          if (editBtn) {
+            const vaccinationId = Number(editBtn.getAttribute('data-edit-vaccination-id'));
+            const currentVaccinations = Array.isArray(window.__petpassCurrentVaccinations) ? window.__petpassCurrentVaccinations : [];
+            const item = currentVaccinations.find((entry) => Number(entry.id) === vaccinationId);
+            if (!item) return;
+            editingVaccinationId = vaccinationId;
+            document.getElementById('vaccVaccineName').value = item.vaccine_name || '';
+            document.getElementById('vaccDateGiven').value = item.date_given || '';
+            document.getElementById('vaccNextDue').value = item.next_due || '';
+            document.getElementById('vaccNotes').value = item.notes || '';
+            hideVaccinationStatus();
+            toggleVaccinationForm(true);
+            return;
+          }
           if (!deleteBtn) return;
 
           const confirmed = await showDeleteConfirm('Удалить запись вакцинации?');
@@ -1535,8 +1575,14 @@
 
           saveBtn.disabled = true;
           try {
-            await createVaccination(petId, payload);
-            setVaccinationStatus('success', 'Вакцинация сохранена ✅');
+            if (editingVaccinationId) {
+              await updateVaccination(petId, editingVaccinationId, payload);
+              setVaccinationStatus('success', 'Запись вакцинации обновлена ✅');
+            } else {
+              await createVaccination(petId, payload);
+              setVaccinationStatus('success', 'Вакцинация сохранена ✅');
+            }
+            editingVaccinationId = null;
             resetVaccinationForm();
             toggleVaccinationForm(false);
             await refreshVaccinations(petId);
@@ -1605,6 +1651,23 @@
         }
       }
 
+      async function updateTreatment(petId, treatmentId, payload) {
+        const response = await fetch(`/api/pets/${petId}/treatments/${treatmentId}`, {
+          method: 'PATCH',
+          headers: getApiHeaders(),
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          const error = new Error(errData.error || 'Не удалось обновить обработку');
+          error.status = response.status;
+          throw error;
+        }
+
+        return response.json();
+      }
+
       function setTreatmentStatus(type, message) {
         const statusEl = document.getElementById('treatmentStatus');
         if (!statusEl) return;
@@ -1662,7 +1725,10 @@
                   ${nextDueText}
                   ${notesText}
                 </div>
-                <button class="walk-delete-btn" data-delete-treatment-id="${item.id}" type="button" aria-label="Удалить запись">🗑</button>
+                <div style="display:flex; gap:8px;">
+                  <button class="walk-delete-btn" data-edit-treatment-id="${item.id}" type="button" aria-label="Редактировать запись">✏️</button>
+                  <button class="walk-delete-btn" data-delete-treatment-id="${item.id}" type="button" aria-label="Удалить запись">🗑</button>
+                </div>
               </div>
             `;
           })
@@ -1688,6 +1754,8 @@
 
       async function renderTreatmentsScreen(petId, initialType = 'fleas') {
         let currentType = initialType === 'worms' ? 'worms' : 'fleas';
+        let editingTreatmentId = null;
+        let currentTreatments = [];
 
         screenSectionEl.innerHTML = `
           <div><button class="back-btn nav-back" id="backToProfileBtn">← Назад</button></div>
@@ -1742,11 +1810,13 @@
 
         async function refreshTreatments() {
           const items = await fetchTreatments(petId, currentType);
+          currentTreatments = items;
           renderTreatmentsList(items);
         }
 
         async function switchType(nextType) {
           currentType = nextType;
+          editingTreatmentId = null;
           syncTabs();
           hideTreatmentStatus();
           try {
@@ -1760,6 +1830,7 @@
 
         document.getElementById('backToProfileBtn').addEventListener('click', () => setHash(`#pet/${petId}`));
         document.getElementById('showTreatmentFormBtn').addEventListener('click', () => {
+          editingTreatmentId = null;
           hideTreatmentStatus();
           toggleTreatmentForm(true);
         });
@@ -1773,6 +1844,20 @@
 
         document.getElementById('treatmentsList').addEventListener('click', async (event) => {
           const deleteBtn = event.target.closest('[data-delete-treatment-id]');
+          const editBtn = event.target.closest('[data-edit-treatment-id]');
+          if (editBtn) {
+            const treatmentId = Number(editBtn.getAttribute('data-edit-treatment-id'));
+            const item = currentTreatments.find((entry) => Number(entry.id) === treatmentId);
+            if (!item) return;
+            editingTreatmentId = treatmentId;
+            document.getElementById('treatmentProductName').value = item.product_name || '';
+            document.getElementById('treatmentDateGiven').value = item.date_given || '';
+            document.getElementById('treatmentNextDue').value = item.next_due || '';
+            document.getElementById('treatmentNotes').value = item.notes || '';
+            hideTreatmentStatus();
+            toggleTreatmentForm(true);
+            return;
+          }
           if (!deleteBtn) return;
 
           const confirmed = await showDeleteConfirm('Удалить запись обработки?');
@@ -1823,8 +1908,14 @@
 
           saveBtn.disabled = true;
           try {
-            await createTreatment(petId, payload);
-            setTreatmentStatus('success', 'Обработка сохранена ✅');
+            if (editingTreatmentId) {
+              await updateTreatment(petId, editingTreatmentId, payload);
+              setTreatmentStatus('success', 'Запись обработки обновлена ✅');
+            } else {
+              await createTreatment(petId, payload);
+              setTreatmentStatus('success', 'Обработка сохранена ✅');
+            }
+            editingTreatmentId = null;
             resetTreatmentForm();
             toggleTreatmentForm(false);
             await refreshTreatments();
