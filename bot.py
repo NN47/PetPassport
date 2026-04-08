@@ -2803,7 +2803,7 @@ async def start_web_server() -> None:
     ensure_feedings_table()
 
     app = web.Application()
-    app.router.add_get("/", lambda request: web.FileResponse("index.html"))
+    app.router.add_get("/", serve_index)
     app.router.add_static("/assets/", path=ASSETS_DIR, name="assets")
     app.router.add_get("/health", health)
     app.router.add_post("/api/auth", auth_handler)
@@ -2849,6 +2849,14 @@ async def start_web_server() -> None:
     await site.start()
 
     print(f"Health server started on 0.0.0.0:{port}")
+
+
+async def serve_index(_: web.Request) -> web.FileResponse:
+    response = web.FileResponse("index.html")
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 async def main():
