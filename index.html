@@ -113,21 +113,22 @@
         font-weight: 700;
       }
       .pets-report-table-wrap {
-        overflow-x: auto;
+        overflow: hidden;
       }
       .pets-report-table {
         width: 100%;
-        min-width: 560px;
+        min-width: 0;
         border-collapse: collapse;
-        font-size: 13px;
-        table-layout: auto;
+        font-size: 12px;
+        table-layout: fixed;
       }
       .pets-report-table th,
       .pets-report-table td {
         border: 1px solid var(--border);
-        padding: 7px 6px;
+        padding: 6px 4px;
         text-align: center;
-        white-space: nowrap;
+        white-space: normal;
+        word-break: break-word;
       }
       .pets-report-table thead th {
         background: color-mix(in srgb, var(--card) 80%, var(--bg));
@@ -137,12 +138,14 @@
       .pets-report-table th:first-child,
       .pets-report-table td:first-child {
         text-align: left;
-        width: 24%;
-        min-width: 120px;
+        width: 28%;
+        min-width: 0;
       }
       .pets-report-date {
         color: var(--text);
         font-weight: 600;
+        display: inline-block;
+        white-space: nowrap;
       }
       .pets-report-date.overdue {
         color: #b42318;
