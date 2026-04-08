@@ -723,6 +723,13 @@
         return `${day}.${month}.${year}`;
       }
 
+      function formatDateRuWithoutYear(isoDate) {
+        if (!isoDate) return '';
+        const [year, month, day] = String(isoDate).split('-');
+        if (!year || !month || !day) return isoDate;
+        return `${day}.${month}`;
+      }
+
       function formatDateTimeRu(rawDateTime) {
         if (!rawDateTime) return '';
         const date = new Date(rawDateTime);
@@ -884,7 +891,7 @@
           const nextDueKey = getDateKey(item?.next_due);
           if (!nextDueKey) return '<span class="pets-report-date empty">—</span>';
           const className = nextDueKey < todayKey ? 'pets-report-date overdue' : 'pets-report-date';
-          return `<span class="${className}">${formatDateRu(nextDueKey)}</span>`;
+          return `<span class="${className}">${formatDateRuWithoutYear(nextDueKey)}</span>`;
         };
 
         const reportRows = pets.map((pet) => {
