@@ -19,7 +19,9 @@ from aiohttp import web
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
-WEBAPP_URL = "https://petpass-aerc.onrender.com/"
+WEBAPP_BASE_URL = "https://petpass-aerc.onrender.com/"
+WEBAPP_VERSION = os.getenv("WEBAPP_VERSION") or os.getenv("RENDER_GIT_COMMIT") or str(int(time.time()))
+WEBAPP_URL = f"{WEBAPP_BASE_URL}?v={WEBAPP_VERSION}"
 BASE_DIR = Path(__file__).parent
 ASSETS_DIR = BASE_DIR / "assets"
 
@@ -2802,7 +2804,7 @@ async def start_web_server() -> None:
     ensure_user_settings_table()
     ensure_feedings_table()
 
-    app = web.Application()
+    app = web.Application(middlewares=[cache_control_middleware])
     app.router.add_get("/", serve_index)
     app.router.add_static("/assets/", path=ASSETS_DIR, name="assets")
     app.router.add_get("/health", health)
@@ -2853,10 +2855,26 @@ async def start_web_server() -> None:
 
 async def serve_index(_: web.Request) -> web.FileResponse:
     response = web.FileResponse("index.html")
+    apply_no_cache_headers(response)
+    return response
+
+
+@web.middleware
+async def cache_control_middleware(request: web.Request, handler):
+    response = await handler(request)
+
+    if request.method == "GET" and (
+        request.path == "/" or request.path.startswith("/assets/")
+    ):
+        apply_no_cache_headers(response)
+
+    return response
+
+
+def apply_no_cache_headers(response: web.StreamResponse) -> None:
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
-    return response
 
 
 async def main():
