@@ -117,17 +117,17 @@
       }
       .pets-report-table {
         width: 100%;
+        min-width: 560px;
         border-collapse: collapse;
         font-size: 13px;
-        table-layout: fixed;
+        table-layout: auto;
       }
       .pets-report-table th,
       .pets-report-table td {
         border: 1px solid var(--border);
         padding: 7px 6px;
         text-align: center;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        white-space: nowrap;
       }
       .pets-report-table thead th {
         background: color-mix(in srgb, var(--card) 80%, var(--bg));
@@ -137,8 +137,8 @@
       .pets-report-table th:first-child,
       .pets-report-table td:first-child {
         text-align: left;
-        width: 30%;
-        max-width: 120px;
+        width: 24%;
+        min-width: 120px;
       }
       .pets-report-date {
         color: var(--text);
