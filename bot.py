@@ -1468,6 +1468,86 @@ async def api_delete_pet_vaccination(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
+async def api_patch_pet_vaccination(request: web.Request) -> web.Response:
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
+
+    pet_id_raw = request.match_info.get("pet_id", "")
+    vaccination_id_raw = request.match_info.get("vaccination_id", "")
+
+    try:
+        pet_id = int(pet_id_raw)
+        vaccination_id = int(vaccination_id_raw)
+    except ValueError:
+        return web.json_response({"error": "pet_id and vaccination_id must be integers"}, status=400)
+
+    owned_pet_id = get_owned_pet_id(tg_user_id, pet_id)
+    if owned_pet_id is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    if not isinstance(payload, dict):
+        return web.json_response({"error": "JSON body must be an object"}, status=400)
+
+    vaccine_name = str(payload.get("vaccine_name", "")).strip()
+    if not vaccine_name:
+        return web.json_response({"error": "vaccine_name is required"}, status=400)
+
+    date_given_raw = payload.get("date_given")
+    next_due_raw = payload.get("next_due")
+    if not isinstance(date_given_raw, str) or not isinstance(next_due_raw, str):
+        return web.json_response({"error": "date_given and next_due are required"}, status=400)
+    try:
+        date_given = date.fromisoformat(date_given_raw)
+        next_due = date.fromisoformat(next_due_raw)
+    except ValueError:
+        return web.json_response({"error": "date_given and next_due must be YYYY-MM-DD"}, status=400)
+
+    notes = payload.get("notes")
+    if notes is None:
+        prepared_notes = None
+    elif isinstance(notes, str):
+        prepared_notes = notes.strip() or None
+    else:
+        return web.json_response({"error": "notes must be string"}, status=400)
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            UPDATE vaccinations
+            SET vaccine_name = %s, date_given = %s, next_due = %s, notes = %s
+            WHERE id = %s AND pet_id = %s
+            RETURNING id, vaccine_name, date_given, next_due, notes
+            """,
+            (vaccine_name, date_given, next_due, prepared_notes, vaccination_id, owned_pet_id),
+        )
+        row = db_cursor.fetchone()
+    conn.commit()
+
+    if row is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    return web.json_response(
+        {
+            "ok": True,
+            "vaccination": {
+                "id": row[0],
+                "vaccine_name": row[1],
+                "date_given": row[2].isoformat(),
+                "next_due": row[3].isoformat() if row[3] else None,
+                "notes": row[4],
+            },
+        }
+    )
+
+
 async def api_get_pet_weights(request: web.Request) -> web.Response:
     auth_context = get_tg_user_id(request)
     if auth_context is None:
@@ -1634,6 +1714,78 @@ async def api_delete_pet_weight(request: web.Request) -> web.Response:
         return web.json_response({"error": "Not found"}, status=404)
 
     return web.json_response({"ok": True})
+
+
+async def api_patch_pet_weight(request: web.Request) -> web.Response:
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
+
+    pet_id_raw = request.match_info.get("pet_id", "")
+    weight_id_raw = request.match_info.get("weight_id", "")
+    try:
+        pet_id = int(pet_id_raw)
+        weight_id = int(weight_id_raw)
+    except ValueError:
+        return web.json_response({"error": "pet_id and weight_id must be integers"}, status=400)
+
+    owned_pet_id = get_owned_pet_id(tg_user_id, pet_id)
+    if owned_pet_id is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    if not isinstance(payload, dict):
+        return web.json_response({"error": "JSON body must be an object"}, status=400)
+
+    date_raw = payload.get("date")
+    raw_weight = payload.get("weight")
+    if not isinstance(date_raw, str) or not isinstance(raw_weight, (int, float)):
+        return web.json_response({"error": "date and weight are required"}, status=400)
+    try:
+        measured_date = date.fromisoformat(date_raw)
+    except ValueError:
+        return web.json_response({"error": "date must be YYYY-MM-DD"}, status=400)
+    weight_value = float(raw_weight)
+
+    notes = payload.get("notes")
+    if notes is None:
+        prepared_notes = None
+    elif isinstance(notes, str):
+        prepared_notes = notes.strip() or None
+    else:
+        return web.json_response({"error": "notes must be string"}, status=400)
+
+    weights_columns = get_weights_columns()
+    date_column, weight_column = get_weights_mapping(weights_columns)
+    notes_update = ", notes = %s" if "notes" in weights_columns else ""
+    notes_tuple: tuple[object, ...] = (prepared_notes,) if "notes" in weights_columns else ()
+    returning_notes = "notes" if "notes" in weights_columns else "NULL AS notes"
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            f"""
+            UPDATE weights
+            SET {date_column} = %s, {weight_column} = %s{notes_update}
+            WHERE id = %s AND pet_id = %s
+            RETURNING id, {date_column}, {weight_column}, {returning_notes}
+            """,
+            (measured_date, weight_value, *notes_tuple, weight_id, owned_pet_id),
+        )
+        row = db_cursor.fetchone()
+    conn.commit()
+
+    if row is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    return web.json_response(
+        {"ok": True, "weight": {"id": row[0], "date": row[1].isoformat(), "weight": float(row[2]), "notes": row[3]}}
+    )
 
 
 
@@ -1807,6 +1959,73 @@ async def api_delete_pet_walk(request: web.Request) -> web.Response:
         return web.json_response({"error": "Not found"}, status=404)
 
     return web.json_response({"ok": True})
+
+
+async def api_patch_pet_walk(request: web.Request) -> web.Response:
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
+
+    pet_id_raw = request.match_info.get("pet_id", "")
+    walk_id_raw = request.match_info.get("walk_id", "")
+    try:
+        pet_id = int(pet_id_raw)
+        walk_id = int(walk_id_raw)
+    except ValueError:
+        return web.json_response({"error": "pet_id and walk_id must be integers"}, status=400)
+
+    owned_pet_id = get_owned_pet_id(tg_user_id, pet_id)
+    if owned_pet_id is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    if not isinstance(payload, dict):
+        return web.json_response({"error": "JSON body must be an object"}, status=400)
+
+    started_at = parse_walk_started_at(payload.get("started_at"))
+    raw_duration = payload.get("duration_min")
+    if started_at is None or not isinstance(raw_duration, int) or raw_duration <= 0:
+        return web.json_response({"error": "started_at and positive duration_min are required"}, status=400)
+
+    notes = payload.get("notes")
+    if notes is None:
+        prepared_notes = None
+    elif isinstance(notes, str):
+        prepared_notes = notes.strip() or None
+    else:
+        return web.json_response({"error": "notes must be string"}, status=400)
+
+    walks_columns = get_walks_columns()
+    started_column, duration_column = get_walks_mapping(walks_columns)
+    notes_update = ", notes = %s" if "notes" in walks_columns else ""
+    notes_tuple: tuple[object, ...] = (prepared_notes,) if "notes" in walks_columns else ()
+    returning_notes = "notes" if "notes" in walks_columns else "NULL AS notes"
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            f"""
+            UPDATE walks
+            SET {started_column} = %s, {duration_column} = %s{notes_update}
+            WHERE id = %s AND pet_id = %s
+            RETURNING id, {started_column}, {duration_column}, {returning_notes}
+            """,
+            (started_at, raw_duration, *notes_tuple, walk_id, owned_pet_id),
+        )
+        row = db_cursor.fetchone()
+    conn.commit()
+
+    if row is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    return web.json_response(
+        {"ok": True, "walk": {"id": row[0], "started_at": row[1].isoformat() if row[1] else None, "duration_min": int(row[2]), "notes": row[3]}}
+    )
 
 
 def validate_event_type(raw_type: object) -> str | None:
@@ -2007,6 +2226,93 @@ async def api_delete_pet_event(request: web.Request) -> web.Response:
 
     return web.json_response({"ok": True})
 
+
+async def api_patch_pet_event(request: web.Request) -> web.Response:
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
+
+    pet_id_raw = request.match_info.get("pet_id", "")
+    event_id_raw = request.match_info.get("event_id", "")
+    try:
+        pet_id = int(pet_id_raw)
+        event_id = int(event_id_raw)
+    except ValueError:
+        return web.json_response({"error": "pet_id and event_id must be integers"}, status=400)
+
+    owned_pet_id = get_owned_pet_id(tg_user_id, pet_id)
+    if owned_pet_id is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    if not isinstance(payload, dict):
+        return web.json_response({"error": "JSON body must be an object"}, status=400)
+
+    event_type = validate_event_type(payload.get("type"))
+    if event_type is None:
+        return web.json_response({"error": "type must be vet, health, note or other"}, status=400)
+    title = str(payload.get("title", "")).strip()
+    if not title:
+        return web.json_response({"error": "title is required"}, status=400)
+
+    description = payload.get("description")
+    if description is None:
+        prepared_description = None
+    elif isinstance(description, str):
+        prepared_description = description.strip() or None
+    else:
+        return web.json_response({"error": "description must be string"}, status=400)
+
+    raw_event_date = payload.get("event_date")
+    if raw_event_date is None:
+        event_date = datetime.now()
+    else:
+        event_date = parse_event_datetime(raw_event_date)
+        if event_date is None:
+            return web.json_response({"error": "event_date must be ISO datetime or YYYY-MM-DDTHH:MM"}, status=400)
+
+    events_columns = get_events_columns()
+    event_date_column = get_events_date_column(events_columns)
+    stored_title = title if "type" in events_columns else encode_event_type_in_title(event_type, title)
+    type_update = ", type = %s" if "type" in events_columns else ""
+    type_tuple: tuple[object, ...] = (event_type,) if "type" in events_columns else ()
+    returning_type = "type" if "type" in events_columns else "NULL AS type"
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            f"""
+            UPDATE events
+            SET title = %s, description = %s, {event_date_column} = %s{type_update}
+            WHERE id = %s AND pet_id = %s
+            RETURNING id, {returning_type}, title, description, {event_date_column}
+            """,
+            (stored_title, prepared_description, event_date, *type_tuple, event_id, owned_pet_id),
+        )
+        row = db_cursor.fetchone()
+    conn.commit()
+
+    if row is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    return web.json_response(
+        {
+            "ok": True,
+            "event": {
+                "id": row[0],
+                "type": row[1] if row[1] in {"vet", "health", "note", "other"} else event_type,
+                "title": row[2],
+                "description": row[3],
+                "event_date": row[4].isoformat() if row[4] else None,
+            },
+        }
+    )
+
 def validate_treatment_type(raw_type: object) -> str | None:
     if not isinstance(raw_type, str):
         return None
@@ -2188,6 +2494,85 @@ async def api_delete_pet_treatment(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
+async def api_patch_pet_treatment(request: web.Request) -> web.Response:
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
+
+    pet_id_raw = request.match_info.get("pet_id", "")
+    treatment_id_raw = request.match_info.get("treatment_id", "")
+    try:
+        pet_id = int(pet_id_raw)
+        treatment_id = int(treatment_id_raw)
+    except ValueError:
+        return web.json_response({"error": "pet_id and treatment_id must be integers"}, status=400)
+
+    owned_pet_id = get_owned_pet_id(tg_user_id, pet_id)
+    if owned_pet_id is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+    if not isinstance(payload, dict):
+        return web.json_response({"error": "JSON body must be an object"}, status=400)
+
+    treatment_type = validate_treatment_type(payload.get("type"))
+    product_name = str(payload.get("product_name", "")).strip()
+    date_given_raw = payload.get("date_given")
+    next_due_raw = payload.get("next_due")
+    if treatment_type is None or not product_name:
+        return web.json_response({"error": "type and product_name are required"}, status=400)
+    if not isinstance(date_given_raw, str) or not isinstance(next_due_raw, str):
+        return web.json_response({"error": "date_given and next_due are required"}, status=400)
+    try:
+        date_given = date.fromisoformat(date_given_raw)
+        next_due = date.fromisoformat(next_due_raw)
+    except ValueError:
+        return web.json_response({"error": "date_given and next_due must be YYYY-MM-DD"}, status=400)
+
+    notes = payload.get("notes")
+    if notes is None:
+        prepared_notes = None
+    elif isinstance(notes, str):
+        prepared_notes = notes.strip() or None
+    else:
+        return web.json_response({"error": "notes must be string"}, status=400)
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            UPDATE treatments
+            SET type = %s, product_name = %s, date_given = %s, next_due = %s, notes = %s
+            WHERE id = %s AND pet_id = %s
+            RETURNING id, type, product_name, date_given, next_due, notes
+            """,
+            (treatment_type, product_name, date_given, next_due, prepared_notes, treatment_id, owned_pet_id),
+        )
+        row = db_cursor.fetchone()
+    conn.commit()
+
+    if row is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    return web.json_response(
+        {
+            "ok": True,
+            "treatment": {
+                "id": row[0],
+                "type": row[1],
+                "product_name": row[2],
+                "date_given": row[3].isoformat(),
+                "next_due": row[4].isoformat() if row[4] else None,
+                "notes": row[5],
+            },
+        }
+    )
+
+
 async def api_get_pet_feedings(request: web.Request) -> web.Response:
     auth_context = get_tg_user_id(request)
     if auth_context is None:
@@ -2340,6 +2725,77 @@ async def api_delete_pet_feeding(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
+async def api_patch_pet_feeding(request: web.Request) -> web.Response:
+    auth_context = get_tg_user_id(request)
+    if auth_context is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    tg_user_id, tg_user = auth_context
+
+    pet_id_raw = request.match_info.get("pet_id", "")
+    feeding_id_raw = request.match_info.get("feeding_id", "")
+    try:
+        pet_id = int(pet_id_raw)
+        feeding_id = int(feeding_id_raw)
+    except ValueError:
+        return web.json_response({"error": "pet_id and feeding_id must be integers"}, status=400)
+
+    owned_pet_id = get_owned_pet_id(tg_user_id, pet_id)
+    if owned_pet_id is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        payload = {}
+    if not isinstance(payload, dict):
+        return web.json_response({"error": "JSON body must be an object"}, status=400)
+
+    fed_at_raw = payload.get("fed_at")
+    if not isinstance(fed_at_raw, str):
+        return web.json_response({"error": "fed_at is required"}, status=400)
+    try:
+        fed_at = datetime.fromisoformat(fed_at_raw)
+    except ValueError:
+        return web.json_response({"error": "fed_at must be ISO datetime string"}, status=400)
+
+    food = payload.get("food")
+    if not isinstance(food, str) or not food.strip():
+        return web.json_response({"error": "food is required"}, status=400)
+    prepared_food = food.strip()
+
+    notes = payload.get("notes")
+    if notes is None:
+        prepared_notes = None
+    elif isinstance(notes, str):
+        prepared_notes = notes.strip() or None
+    else:
+        return web.json_response({"error": "notes must be string"}, status=400)
+
+    conn = get_db_connection()
+    with conn.cursor() as db_cursor:
+        db_cursor.execute(
+            """
+            UPDATE feedings
+            SET fed_at = %s, food = %s, notes = %s
+            WHERE id = %s AND pet_id = %s
+            RETURNING id, fed_at, food, notes
+            """,
+            (fed_at, prepared_food, prepared_notes, feeding_id, owned_pet_id),
+        )
+        row = db_cursor.fetchone()
+    conn.commit()
+
+    if row is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    return web.json_response(
+        {
+            "ok": True,
+            "feeding": {"id": row[0], "fed_at": row[1].isoformat() if row[1] else None, "food": row[2], "notes": row[3]},
+        }
+    )
+
+
 async def start_web_server() -> None:
     ensure_user_columns()
     ensure_notification_log_table()
@@ -2361,21 +2817,27 @@ async def start_web_server() -> None:
     app.router.add_delete("/api/pets/{pet_id}", api_delete_pet)
     app.router.add_get("/api/pets/{pet_id}/vaccinations", api_get_pet_vaccinations)
     app.router.add_post("/api/pets/{pet_id}/vaccinations", api_create_pet_vaccination)
+    app.router.add_patch("/api/pets/{pet_id}/vaccinations/{vaccination_id}", api_patch_pet_vaccination)
     app.router.add_delete("/api/pets/{pet_id}/vaccinations/{vaccination_id}", api_delete_pet_vaccination)
     app.router.add_get("/api/pets/{pet_id}/weights", api_get_pet_weights)
     app.router.add_post("/api/pets/{pet_id}/weights", api_create_pet_weight)
+    app.router.add_patch("/api/pets/{pet_id}/weights/{weight_id}", api_patch_pet_weight)
     app.router.add_delete("/api/pets/{pet_id}/weights/{weight_id}", api_delete_pet_weight)
     app.router.add_get("/api/pets/{pet_id}/walks", api_get_pet_walks)
     app.router.add_post("/api/pets/{pet_id}/walks", api_create_pet_walk)
+    app.router.add_patch("/api/pets/{pet_id}/walks/{walk_id}", api_patch_pet_walk)
     app.router.add_delete("/api/pets/{pet_id}/walks/{walk_id}", api_delete_pet_walk)
     app.router.add_get("/api/pets/{pet_id}/events", api_get_pet_events)
     app.router.add_post("/api/pets/{pet_id}/events", api_create_pet_event)
+    app.router.add_patch("/api/pets/{pet_id}/events/{event_id}", api_patch_pet_event)
     app.router.add_delete("/api/pets/{pet_id}/events/{event_id}", api_delete_pet_event)
     app.router.add_get("/api/pets/{pet_id}/treatments", api_get_pet_treatments)
     app.router.add_post("/api/pets/{pet_id}/treatments", api_create_pet_treatment)
+    app.router.add_patch("/api/pets/{pet_id}/treatments/{treatment_id}", api_patch_pet_treatment)
     app.router.add_delete("/api/pets/{pet_id}/treatments/{treatment_id}", api_delete_pet_treatment)
     app.router.add_get("/api/pets/{pet_id}/feedings", api_get_pet_feedings)
     app.router.add_post("/api/pets/{pet_id}/feedings", api_create_pet_feeding)
+    app.router.add_patch("/api/pets/{pet_id}/feedings/{feeding_id}", api_patch_pet_feeding)
     app.router.add_delete("/api/pets/{pet_id}/feedings/{feeding_id}", api_delete_pet_feeding)
 
     runner = web.AppRunner(app)
