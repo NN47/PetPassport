@@ -140,18 +140,16 @@
         width: 30%;
         max-width: 120px;
       }
-      .pets-report-mark {
-        font-size: 18px;
-        line-height: 1;
+      .pets-report-date {
+        color: var(--text);
+        font-weight: 600;
       }
-      .pets-report-mark.ok {
-        color: #15803d;
-      }
-      .pets-report-mark.bad {
+      .pets-report-date.overdue {
         color: #b42318;
       }
-      .pets-report-mark.empty {
+      .pets-report-date.empty {
         color: var(--hint);
+        font-weight: 400;
       }
       .pets-report-weight-empty {
         color: var(--hint);
@@ -879,18 +877,18 @@
         };
 
         const todayKey = new Date().toISOString().slice(0, 10);
-        const renderStatusMark = (item) => {
+        const renderDueDateCell = (item) => {
           const nextDueKey = getDateKey(item?.next_due);
-          if (!nextDueKey) return '<span class="pets-report-mark empty">—</span>';
-          if (nextDueKey < todayKey) return '<span class="pets-report-mark bad">✖</span>';
-          return '<span class="pets-report-mark ok">✔</span>';
+          if (!nextDueKey) return '<span class="pets-report-date empty">—</span>';
+          const className = nextDueKey < todayKey ? 'pets-report-date overdue' : 'pets-report-date';
+          return `<span class="${className}">${formatDateRu(nextDueKey)}</span>`;
         };
 
         const reportRows = pets.map((pet) => {
           const summary = summaries.get(String(pet.id)) || {};
-          const vaccination = renderStatusMark(summary.latest_vaccination);
-          const fleas = renderStatusMark(summary.latest_treatment_fleas);
-          const worms = renderStatusMark(summary.latest_treatment_worms);
+          const vaccination = renderDueDateCell(summary.latest_vaccination);
+          const fleas = renderDueDateCell(summary.latest_treatment_fleas);
+          const worms = renderDueDateCell(summary.latest_treatment_worms);
           const weight = summary.latest_weight?.weight;
           const weightValue = Number.isFinite(Number(weight))
             ? `${Number(weight).toFixed(1)} кг`
@@ -1461,8 +1459,8 @@
             <label class="label" for="vaccDateGiven">Дата вакцинации</label>
             <input id="vaccDateGiven" class="field" type="date" />
 
-            <label class="label" for="vaccNextDue">Следующая вакцинация (опционально)</label>
-            <input id="vaccNextDue" class="field" type="date" />
+            <label class="label" for="vaccNextDue">Следующая вакцинация</label>
+            <input id="vaccNextDue" class="field" type="date" required />
 
             <label class="label" for="vaccNotes">Заметка (опционально)</label>
             <textarea id="vaccNotes" class="field" rows="3" maxlength="500"></textarea>
@@ -1523,11 +1521,15 @@
             setVaccinationStatus('error', 'Укажите дату вакцинации.');
             return;
           }
+          if (!nextDue) {
+            setVaccinationStatus('error', 'Укажите дату следующей вакцинации.');
+            return;
+          }
 
           const payload = {
             vaccine_name: vaccineName,
             date_given: dateGiven,
-            next_due: nextDue || null,
+            next_due: nextDue,
             notes: notes || null,
           };
 
@@ -1717,8 +1719,8 @@
             <label class="label" for="treatmentDateGiven">Дата обработки</label>
             <input id="treatmentDateGiven" class="field" type="date" />
 
-            <label class="label" for="treatmentNextDue">Следующая обработка (опционально)</label>
-            <input id="treatmentNextDue" class="field" type="date" />
+            <label class="label" for="treatmentNextDue">Следующая обработка</label>
+            <input id="treatmentNextDue" class="field" type="date" required />
 
             <label class="label" for="treatmentNotes">Заметка (опционально)</label>
             <textarea id="treatmentNotes" class="field" rows="3" maxlength="500"></textarea>
@@ -1806,12 +1808,16 @@
             setTreatmentStatus('error', 'Укажите дату обработки.');
             return;
           }
+          if (!nextDue) {
+            setTreatmentStatus('error', 'Укажите дату следующей обработки.');
+            return;
+          }
 
           const payload = {
             type: currentType,
             product_name: productName,
             date_given: dateGiven,
-            next_due: nextDue || null,
+            next_due: nextDue,
             notes: notes || null,
           };
 

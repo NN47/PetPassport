@@ -1387,17 +1387,13 @@ async def api_create_pet_vaccination(request: web.Request) -> web.Response:
         return web.json_response({"error": "date_given must be YYYY-MM-DD"}, status=400)
 
     next_due_raw = payload.get("next_due")
-    next_due = None
-    if next_due_raw is not None:
-        if not isinstance(next_due_raw, str):
-            return web.json_response({"error": "next_due must be YYYY-MM-DD"}, status=400)
-        if next_due_raw.strip() == "":
-            next_due = None
-        else:
-            try:
-                next_due = date.fromisoformat(next_due_raw)
-            except ValueError:
-                return web.json_response({"error": "next_due must be YYYY-MM-DD"}, status=400)
+    if not isinstance(next_due_raw, str) or not next_due_raw.strip():
+        return web.json_response({"error": "next_due is required"}, status=400)
+
+    try:
+        next_due = date.fromisoformat(next_due_raw)
+    except ValueError:
+        return web.json_response({"error": "next_due must be YYYY-MM-DD"}, status=400)
 
     notes = payload.get("notes")
     if notes is None:
@@ -2110,17 +2106,13 @@ async def api_create_pet_treatment(request: web.Request) -> web.Response:
         return web.json_response({"error": "date_given must be YYYY-MM-DD"}, status=400)
 
     next_due_raw = payload.get("next_due")
-    next_due = None
-    if next_due_raw is not None:
-        if not isinstance(next_due_raw, str):
-            return web.json_response({"error": "next_due must be YYYY-MM-DD"}, status=400)
-        if next_due_raw.strip() == "":
-            next_due = None
-        else:
-            try:
-                next_due = date.fromisoformat(next_due_raw)
-            except ValueError:
-                return web.json_response({"error": "next_due must be YYYY-MM-DD"}, status=400)
+    if not isinstance(next_due_raw, str) or not next_due_raw.strip():
+        return web.json_response({"error": "next_due is required"}, status=400)
+
+    try:
+        next_due = date.fromisoformat(next_due_raw)
+    except ValueError:
+        return web.json_response({"error": "next_due must be YYYY-MM-DD"}, status=400)
 
     notes = payload.get("notes")
     if notes is None:
